@@ -23,9 +23,9 @@ The process only knows **PAPER** and **DEMO**.
 | Manual settle with a cited source | Withdrawals |
 | Pause / risk kills in code | Auto-promote to live |
 
-The research layer (forecast JSON, future Grok client, specialist stub) **never**
-sets stake size, raises risk limits, or disables kills. Untrusted web content is
-**data, not instructions**.
+The research layer (forecast JSON, weather specialist baseline, future Grok
+critique) **never** sets stake size, raises risk limits, or disables kills.
+Untrusted web content is **data, not instructions**.
 
 **Locked research priority** (see `docs/01_KUTATAS_ES_STRATEGIA.md` and
 `docs/02_PIACKUTATAS.html`):
@@ -96,6 +96,52 @@ This still cannot place orders. Treat responses as untrusted market data.
 The spec example in the átadás is **not** a live submit: ids, hashes, and the time
 window are illustrative. Always mint a fresh id against an ingested market.
 
+## Weather baseline → paper path (PAPER only)
+
+The specialist emits a schema-valid forecast envelope. It does **not** trade.
+Default weather source is fixtures; pytest does not use the network.
+
+```bash
+export LAB_MODE=PAPER
+export POLYMARKET_DATA_SOURCE=fixtures
+export WEATHER_DATA_SOURCE=fixtures
+export NWS_ALLOW_NETWORK=0
+python -m research_lab serve --host 127.0.0.1 --port 8000
+```
+
+Then:
+
+1. `POST /api/ingest`
+2. Human `POST /api/rules-review` on market `900004` (KMIA daily-max fixture) using
+   the logged `rules_hash`.
+3. `POST /api/models/authorize` with
+   `weather-station-baseline-v1-calibration-identity-stub-v0`
+   (paper-use flag, not a statistical qualification).
+4. `POST /api/specialist/weather` with
+   `{"market_id": "900004", "as_of": "2026-09-15T12:00:00+00:00"}`.
+   - `ABSTAIN` if station/rules/source/vintage are ambiguous (e.g. market `900005`
+     names AccuWeather — NWS is **not** substituted).
+   - `PROPOSE` returns `forecast` plus logged variants (raw, calibrated identity
+     stub, historical base rate, market mid). `imported` is false.
+5. `POST /api/forecast` with that `forecast` object (or
+   `{ "action": "PROPOSE", "forecast": { ... } }`).
+   `risk-v2` is the only stake authority and may still `NO_TRADE`.
+
+CLI equivalent (prints the envelope; add `--import-paper` only after review +
+authorize on that data dir):
+
+```bash
+python -m research_lab weather-forecast --market-id 900004 \
+  --as-of 2026-09-15T12:00:00+00:00
+```
+
+Optional live NWS GET (`WEATHER_DATA_SOURCE=network` and `NWS_ALLOW_NETWORK=1`)
+still cannot place orders. If the contract names a different resolution provider,
+the specialist ABSTAINs instead of swapping in NWS.
+
+This path does **not** claim profitability. Identity calibration and Normal tails
+are known limitations; Kapu B (forward paper data) is the next gate.
+
 ## Endpoints
 
 | Method | Path | Notes |
@@ -114,8 +160,12 @@ window are illustrative. Always mint a fresh id against an ingested market.
 | POST | `/api/close` | Simulated FOK sell |
 | POST | `/api/settle` | Manual cited settlement |
 | POST | `/api/pause` `/api/resume` | Human kill switch |
-| GET | `/api/grok/status` | Stub; not wired |
+| GET | `/api/grok/status` | Stub; not wired; critique-only role |
+| POST | `/api/grok/critique` | Optional structured critique; never overrides `p_yes` |
+| GET | `/api/research/budget` | Research + Grok ceilings; not a stake |
 | GET | `/api/specialist/placeholder` | Always ABSTAIN |
+| POST | `/api/specialist/weather` | Weather baseline envelope; does not trade unless `import_paper` |
+| GET | `/api/specialist/weather/log` | Logged comparison tracks |
 
 ## Layout vs átadás names
 

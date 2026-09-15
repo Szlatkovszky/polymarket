@@ -154,8 +154,24 @@ CREATE TABLE IF NOT EXISTS ops_costs (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS research_estimates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  market_id TEXT NOT NULL,
+  rules_hash TEXT NOT NULL,
+  as_of TEXT NOT NULL,
+  model_version TEXT NOT NULL,
+  calibration_version TEXT NOT NULL,
+  status TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  variant_json TEXT NOT NULL,
+  decision_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status);
 CREATE INDEX IF NOT EXISTS idx_books_market ON books(market_id, captured_at);
+CREATE INDEX IF NOT EXISTS idx_research_estimates_market
+  ON research_estimates(market_id, as_of);
 """
 
 
@@ -605,6 +621,54 @@ class Store:
 
     def list_ops_costs(self) -> list[dict[str, Any]]:
         return [dict(r) for r in self.conn.execute("SELECT * FROM ops_costs ORDER BY id")]
+
+    def insert_research_estimate(self, row: Mapping[str, Any]) -> int:
+        cur = self.conn.execute(
+            """
+            INSERT INTO research_estimates(
+              market_id, rules_hash, as_of, model_version, calibration_version,
+              status, reason, variant_json, decision_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row["market_id"],
+                row["rules_hash"],
+                row["as_of"],
+                row["model_version"],
+                row["calibration_version"],
+                row["status"],
+                row["reason"],
+                json.dumps(row.get("variants") or {}, sort_keys=True),
+                json.dumps(row.get("decision") or {}, sort_keys=True),
+                row["created_at"],
+            ),
+        )
+        return int(cur.lastrowid)
+
+    def list_research_estimates(
+        self, market_id: str | None = None, limit: int = 200
+    ) -> list[dict[str, Any]]:
+        if market_id:
+            rows = self.conn.execute(
+                """
+                SELECT * FROM research_estimates
+                WHERE market_id = ?
+                ORDER BY id DESC LIMIT ?
+                """,
+                (market_id, limit),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM research_estimates ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["variants"] = json.loads(item.pop("variant_json") or "{}")
+            item["decision"] = json.loads(item.pop("decision_json") or "{}")
+            out.append(item)
+        return out
 
     def list_fills(self) -> list[dict[str, Any]]:
         return [dict(r) for r in self.conn.execute("SELECT * FROM fills ORDER BY id")]

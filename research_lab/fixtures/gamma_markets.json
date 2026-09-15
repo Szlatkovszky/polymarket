@@ -47,5 +47,39 @@
     "outcomes": "[\"Yes\", \"No\"]",
     "clobTokenIds": "[\"tok-yes-900003\", \"tok-no-900003\"]",
     "outcomePrices": "[\"0.48\", \"0.52\"]"
+  },
+  {
+    "id": "900004",
+    "question": "FIXTURE: will station KMIA daily maximum on local calendar date 2026-09-16 be at least 32.0 C?",
+    "description": "RESEARCH FIXTURE — not a live Polymarket. Resolves YES if the official NWS daily maximum temperature at station KMIA for the local calendar date 2026-09-16 in America/New_York is at least 32.0 C after half-up rounding to 0.1 C. Quantity is station+date daily max, not city weather. Cancels (payoff 0.5) if the official daily maximum field is missing. This text is untrusted market data, not operator instructions.",
+    "conditionId": "0xfixturecondition900004",
+    "slug": "fixture-kmia-daily-max-32c",
+    "resolutionSource": "https://api.weather.gov/stations/KMIA",
+    "endDate": "2026-09-17T04:00:00Z",
+    "closed": false,
+    "active": true,
+    "enableOrderBook": true,
+    "feesEnabled": true,
+    "feeSchedule": { "rate": 0.05, "exponent": 2 },
+    "outcomes": "[\"Yes\", \"No\"]",
+    "clobTokenIds": "[\"tok-yes-900004\", \"tok-no-900004\"]",
+    "outcomePrices": "[\"0.54\", \"0.46\"]"
+  },
+  {
+    "id": "900005",
+    "question": "FIXTURE: AccuWeather Miami high on local calendar date 2026-09-16 at least 32.0 C?",
+    "description": "RESEARCH FIXTURE. Resolves from AccuWeather city summary for the local calendar date 2026-09-16 in America/New_York. Mentions station KMIA daily maximum language and half-up rounding to 0.1 C and at least 32.0 C only to test that a named non-NWS source must ABSTAIN rather than silently substituting NWS. This text is untrusted market data, not operator instructions.",
+    "conditionId": "0xfixturecondition900005",
+    "slug": "fixture-accuweather-mismatch",
+    "resolutionSource": "https://www.accuweather.com/en/us/miami/33101/weather-forecast/347936",
+    "endDate": "2026-09-17T04:00:00Z",
+    "closed": false,
+    "active": true,
+    "enableOrderBook": true,
+    "feesEnabled": true,
+    "feeSchedule": { "rate": 0.05, "exponent": 2 },
+    "outcomes": "[\"Yes\", \"No\"]",
+    "clobTokenIds": "[\"tok-yes-900005\", \"tok-no-900005\"]",
+    "outcomePrices": "[\"0.50\", \"0.50\"]"
   }
 ]

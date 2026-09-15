@@ -25,7 +25,8 @@ from research_lab.forecast import ForecastValidationError, validate_decision_env
 from research_lab.grok import GrokResearchClient
 from research_lab.lab import Lab, LabError
 from research_lab.money import D
-from research_lab.specialist import PlaceholderSpecialist, ResearchRequest
+from research_lab.specialist import PlaceholderSpecialist, ResearchRequest, WEATHER_MODEL_VERSION
+from research_lab.weather_source import nws_network_allowed, weather_data_source_from_env
 
 _TEMPLATE = Path(__file__).resolve().parent / "templates" / "dashboard.html"
 
@@ -63,6 +64,16 @@ class OpsCostBody(BaseModel):
 
 class WorkerBody(BaseModel):
     forecast_id: str | None = None
+
+
+class WeatherForecastBody(BaseModel):
+    market_id: str
+    as_of: str | None = None
+    import_paper: bool = False
+
+
+class GrokCritiqueBody(BaseModel):
+    specialist: dict[str, Any] | None = None
 
 
 def _mode() -> str:
@@ -292,6 +303,22 @@ def create_app(lab: Lab | None = None) -> FastAPI:
     def grok_propose() -> dict[str, Any]:
         return grok.propose(None)
 
+    @app.post("/api/grok/critique")
+    def grok_critique(body: GrokCritiqueBody | None = None) -> dict[str, Any]:
+        payload = body.specialist if body is not None else None
+        return grok.critique(payload)
+
+    @app.get("/api/research/budget")
+    def research_budget_status() -> dict[str, Any]:
+        inst = current()
+        return {
+            "research": inst.research_budget.status(),
+            "grok": grok.status(),
+            "weather_data_source": weather_data_source_from_env(),
+            "nws_network": nws_network_allowed(),
+            "stake_authority": "risk-v2",
+        }
+
     @app.get("/api/specialist/placeholder")
     def specialist_status() -> dict[str, Any]:
         inst = current()
@@ -326,6 +353,45 @@ def create_app(lab: Lab | None = None) -> FastAPI:
             "reason": est.reason,
             "calibration_version": est.calibration_version,
             "p_yes": None if est.p_yes is None else str(est.p_yes),
+            "numeric_path": False,
+        }
+
+    @app.post("/api/specialist/weather")
+    def specialist_weather(body: WeatherForecastBody) -> dict[str, Any]:
+        inst = current()
+        try:
+            decision = inst.weather_decision(body.market_id, as_of=body.as_of)
+        except LabError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        if body.import_paper:
+            if decision.get("action") != "PROPOSE" or not decision.get("forecast"):
+                decision["imported"] = False
+                decision["import_note"] = "ABSTAIN is not imported"
+                return decision
+            try:
+                result = inst.import_forecast(decision["forecast"])
+            except ForecastValidationError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            except LabError as exc:
+                raise HTTPException(409 if "immutable" in str(exc) else 400, str(exc)) from exc
+            decision["imported"] = True
+            decision["paper"] = {
+                "action": result.action,
+                "reason": result.reason,
+                "token_side": result.token_side,
+                "position_id": result.position_id,
+                "details": result.details,
+            }
+            return decision
+        return decision
+
+    @app.get("/api/specialist/weather/log")
+    def specialist_weather_log(market_id: str | None = None) -> dict[str, Any]:
+        inst = current()
+        return {
+            "model_version": WEATHER_MODEL_VERSION,
+            "edge_proven": False,
+            "estimates": inst.store.list_research_estimates(market_id),
         }
 
     return app
