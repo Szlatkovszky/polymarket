@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import httpx
+
+from research_lab.timeutil import Clock, SystemUTCClock, as_utc
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
 
@@ -56,14 +59,28 @@ class FixtureGamma:
         raise AdapterError(f"fixture market not found: {market_id}")
 
 
+def fixture_book_timestamp_ms(now: datetime) -> str:
+    """CLOB-style millisecond epoch so receive age, not file mtime, governs freshness."""
+    return str(int(as_utc(now).timestamp() * 1000))
+
+
 class FixtureClob:
+    """Recorded CLOB books. Server ``timestamp`` is refreshed at fetch to ``clock.now``.
+
+    risk-v2 ``stale_book`` is max(receive age, server book time). Fixture JSON is a
+    frozen demo tape, so a recorded timestamp hours ago would refuse every paper
+    fill. NetworkClob does not rewrite timestamps.
+    """
+
     source_name = "fixtures"
 
     def __init__(
         self,
         books_path: Path | None = None,
         fees_path: Path | None = None,
+        clock: Clock | None = None,
     ) -> None:
+        self.clock = clock or SystemUTCClock()
         self.books = json.loads(
             (books_path or FIXTURE_DIR / "clob_books.json").read_text(encoding="utf-8")
         )
@@ -74,7 +91,9 @@ class FixtureClob:
     def get_book(self, token_id: str) -> dict[str, Any]:
         if token_id not in self.books:
             raise AdapterError(f"fixture book not found: {token_id}")
-        return dict(self.books[token_id])
+        book = dict(self.books[token_id])
+        book["timestamp"] = fixture_book_timestamp_ms(self.clock.now())
+        return book
 
     def get_fee_bps(self, token_id: str) -> int | None:
         if token_id not in self.fees:
@@ -141,6 +160,7 @@ class NetworkClob:
         )
         if not isinstance(payload, dict):
             raise AdapterError("unexpected CLOB book payload")
+        # Live book age uses the exchange timestamp as returned. Do not rewrite.
         return payload
 
     def get_fee_bps(self, token_id: str) -> int | None:

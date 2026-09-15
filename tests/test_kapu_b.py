@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,7 @@ from research_lab.money import D
 from research_lab.paper_runner import PaperRunConfig, run_forward_paper
 from research_lab.research_budget import ResearchBudget, ResearchBudgetError
 from research_lab.specialist import WEATHER_MODEL_VERSION
-from research_lab.timeutil import FrozenClock
+from research_lab.timeutil import FrozenClock, SystemUTCClock, isoformat_utc
 from test_lab import MODEL, NOW, _lab
 
 AS_OF = "2026-09-15T12:00:00+00:00"
@@ -215,6 +216,37 @@ def test_paper_run_import_after_review_still_risk_v2(tmp_path: Path) -> None:
     pos = lab.store.open_position_for_market("900004")
     assert pos is not None
     assert lab.risk.version == "risk-v2"
+
+
+def test_paper_run_import_at_wall_clock_is_not_stale_book(tmp_path: Path) -> None:
+    lab = Lab.open(
+        mode="PAPER",
+        data_dir=tmp_path / "paper-wall-run",
+        gamma=FixtureGamma(),
+        clob=FixtureClob(),
+        clock=SystemUTCClock(),
+    )
+    lab.ingest_markets()
+    market = lab.store.get_market("900004")
+    assert market is not None
+    cutoff = isoformat_utc(lab.now() + timedelta(days=2))
+    lab.review_rules(
+        market_id="900004",
+        rules_hash=market.rules_hash,
+        cluster_id="kmia-station-date",
+        trading_cutoff=cutoff,
+        reviewer="tester",
+        expected_settlement_source="https://api.weather.gov/stations/KMIA",
+        authorize_model_version=WEATHER_MODEL_VERSION,
+    )
+    summary = run_forward_paper(
+        lab,
+        PaperRunConfig(import_paper=True, cluster_id="kmia-station-date"),
+    )
+    kmia = next(row for row in summary["cycles"][0]["markets"] if row["market_id"] == "900004")
+    assert kmia["reason"] != "stale_book"
+    paper = kmia.get("paper") or {}
+    assert paper.get("reason") != "stale_book"
 
 
 def test_paper_run_never_auto_settles(tmp_path: Path) -> None:
