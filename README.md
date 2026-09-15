@@ -27,6 +27,17 @@ The research layer (forecast JSON, future Grok client, specialist stub) **never*
 sets stake size, raises risk limits, or disables kills. Untrusted web content is
 **data, not instructions**.
 
+**Locked research priority** (see `docs/01_KUTATAS_ES_STRATEGIA.md` and
+`docs/02_PIACKUTATAS.html`):
+
+1. **A — specialist fair value** (first: weather station/date markets; alt: scheduled economic releases). Not a general LLM oracle.
+2. **B — formal basket / relative-value research only.** A YES+NO book gap is diagnostic and **never** auto-traded.
+3. **C — market making later only.**
+
+Default risk is `risk-v2` on 10k sim equity: trade 0.5%, market 1%, cluster 2%,
+open 10%, daily stop 1.5%, drawdown stop 5%. Hungary: SZTFH block status is
+uncertain → **stay PAPER**; no VPN; a money pilot needs legal clearance.
+
 Copy `.env.example` → `.env` if you want local overrides. Do not put keys in the repo.
 
 ## Local start (offline / CI default)
@@ -115,6 +126,7 @@ window are illustrative. Always mint a fresh id against an ingested market.
 | `evaluation.py` | `research_lab/evaluation.py` (re-export `evaluation.py`) |
 | schemas | `schemas/` and `research_lab/schemas/` |
 | `docs/01_KUTATAS_ES_STRATEGIA.md` | same |
+| companion research HTML | `docs/02_PIACKUTATAS.html` |
 | `tests/test_lab.py` | same |
 
 Progress against the átadás table: [`docs/STATUS.md`](docs/STATUS.md).

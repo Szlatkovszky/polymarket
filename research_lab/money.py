@@ -41,18 +41,31 @@ def round_fee_up(value: Decimal) -> Decimal:
     return D(value).quantize(CASH_QUANT, rounding=ROUND_CEILING)
 
 
+def polymarket_taker_fee(
+    *,
+    size: Decimal,
+    price: Decimal,
+    fee_rate: Decimal,
+) -> Decimal:
+    """Documented taker fee: size × fee_rate × price × (1 − price).
+
+    PAPER estimate only — not a live exchange invoice. Do not use a baked-in
+    category table; the rate must come from ``feesEnabled`` + ``feeSchedule``.
+    """
+    if fee_rate < 0:
+        raise ValueError("fee_rate cannot be negative")
+    return size * D(fee_rate) * price * (D(1) - price)
+
+
 def polymarket_crypto_fee(
     *,
     size: Decimal,
     price: Decimal,
     fee_bps: int,
 ) -> Decimal:
-    """Public CLOB crypto-style fee: size * rate * price * (1 - price).
-
-    ``fee_bps`` is the CLOB ``base_fee`` in basis points (e.g. 30 → 0.30%).
-    This is an estimate for PAPER fills, not a live exchange invoice.
-    """
+    """Legacy wrapper: ``fee_bps`` / 10_000 as the taker rate."""
     if fee_bps < 0:
         raise ValueError("fee_bps cannot be negative")
-    rate = D(fee_bps) / D(10_000)
-    return size * rate * price * (D(1) - price)
+    return polymarket_taker_fee(
+        size=size, price=price, fee_rate=D(fee_bps) / D(10_000)
+    )

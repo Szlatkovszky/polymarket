@@ -11,21 +11,22 @@ import csv
 import io
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from research_lab.core import (
     AccountView,
+    DEFAULT_RISK_VERSION,
     Risk,
     evaluate_entry_gates,
     load_risk,
-    position_share_target,
 )
+from research_lab.fees import parse_market_fee_rate
 from research_lab.forecast import ForecastValidationError, ValidatedForecast, validate_forecast_dict
 from research_lab.hashing import rules_hash_from_text
-from research_lab.money import D, polymarket_crypto_fee, q_cash, q_shares, round_fee_up
+from research_lab.money import D, polymarket_taker_fee, q_cash, q_shares, round_fee_up
 from research_lab.store import Store
 from research_lab.timeutil import Clock, SystemUTCClock, isoformat_utc, parse_utc
 
@@ -99,14 +100,18 @@ def simulate_fok(
     *,
     side: str,
     shares: Decimal,
-    fee_bps: int | None,
+    fee_rate: Decimal | None = None,
+    fee_bps: int | None = None,
 ) -> FokFill:
     """Fill-or-kill across book levels. Partial depth → no fill."""
 
     qty = q_shares(shares)
     if qty <= 0:
         return FokFill(False, D(0), D(0), D(0), D(0), (), "non_positive_size")
-    if fee_bps is None:
+    rate = fee_rate
+    if rate is None and fee_bps is not None:
+        rate = D(fee_bps) / D(10_000)
+    if rate is None:
         return FokFill(False, D(0), D(0), D(0), D(0), (), "unknown_fee")
     if qty < book.min_order_size:
         return FokFill(False, D(0), D(0), D(0), D(0), (), "below_min_order_size")
@@ -130,7 +135,7 @@ def simulate_fok(
         if take <= 0:
             continue
         notional += take * level.price
-        fee_exact += polymarket_crypto_fee(size=take, price=level.price, fee_bps=fee_bps)
+        fee_exact += polymarket_taker_fee(size=take, price=level.price, fee_rate=rate)
         used.append({"price": str(level.price), "size": str(take)})
         remaining -= take
 
@@ -150,11 +155,71 @@ def simulate_fok(
     )
 
 
-def all_in_buy_price(fill: FokFill, ops_reserve: Decimal) -> Decimal:
-    """Conservative unit price including fee and allocated ops reserve (not double-booked)."""
+def all_in_buy_price(fill: FokFill, per_share_reserve: Decimal) -> Decimal:
+    """Conservative unit cost: VWAP + taker fee + research reserves (not double-booked)."""
     if fill.shares <= 0:
         raise LabError("no shares")
-    return (fill.notional + fill.fee + ops_reserve) / fill.shares
+    return (fill.notional + fill.fee) / fill.shares + per_share_reserve
+
+
+def yes_no_cross_book_diagnostic(
+    yes_book: OrderBook | None, no_book: OrderBook | None
+) -> dict[str, Any]:
+    """YES+NO ask sum is a data-quality check. Never an automatic trade."""
+    base = {
+        "tradeable": False,
+        "note": "YES+NO gap is diagnostic only; never auto-traded. Basket RV is strategy B research.",
+    }
+    if yes_book is None or no_book is None or not yes_book.asks or not no_book.asks:
+        return {**base, "status": "incomplete"}
+    yes_ask = yes_book.asks[0].price
+    no_ask = no_book.asks[0].price
+    return {
+        **base,
+        "status": "ok",
+        "yes_best_ask": str(yes_ask),
+        "no_best_ask": str(no_ask),
+        "sum_asks": str(yes_ask + no_ask),
+        "apparent_gap_vs_1": str(D(1) - (yes_ask + no_ask)),
+    }
+
+
+def _parse_book_timestamp(raw: Mapping[str, Any]) -> datetime | None:
+    ts = raw.get("timestamp")
+    if ts is None or ts == "":
+        return None
+    text = str(ts).strip()
+    if text.isdigit():
+        n = int(text)
+        seconds = n / 1000 if n > 10_000_000_000 else float(n)
+        return datetime.fromtimestamp(seconds, tz=timezone.utc)
+    try:
+        return parse_utc(text)
+    except ValueError:
+        return None
+
+
+def book_age_seconds(now: datetime, captured_at: str, book_raw: Mapping[str, Any]) -> Decimal:
+    """Max of receive age and server book time. Unknown server time → extremely stale."""
+    recv = D(str((now - parse_utc(captured_at)).total_seconds()))
+    server = _parse_book_timestamp(book_raw)
+    if server is None:
+        return D("1000000000000")
+    server_age = D(str((now - server).total_seconds()))
+    return recv if recv >= server_age else server_age
+
+
+def ask_depth(book: OrderBook) -> Decimal:
+    total = D(0)
+    for level in book.asks:
+        total += level.size
+    return total
+
+
+def best_spread(book: OrderBook) -> Decimal | None:
+    if not book.bids or not book.asks:
+        return None
+    return book.asks[0].price - book.bids[0].price
 
 
 @dataclass
@@ -201,7 +266,7 @@ class Lab:
         *,
         mode: str,
         data_dir: Path,
-        risk_version: str = "risk-v1",
+        risk_version: str = DEFAULT_RISK_VERSION,
         gamma: Any,
         clob: Any,
         clock: Clock | None = None,
@@ -279,12 +344,15 @@ class Lab:
             if not token_id:
                 continue
             book = self.clob.get_book(token_id)
-            fee = self.clob.get_fee_bps(token_id)
+            raw_market = json.loads(market.raw_json)
+            fee_rate = parse_market_fee_rate(raw_market)
+            fee_bps = None if fee_rate is None else int((fee_rate * D(10_000)).to_integral_value())
             meta = {
                 "source": getattr(self.clob, "source_name", "unknown"),
                 "token_side": side,
                 "mode": self.mode,
-                "fee_bps": fee,
+                "fee_rate": None if fee_rate is None else str(fee_rate),
+                "feesEnabled": raw_market.get("feesEnabled"),
             }
             self.store.insert_book(
                 market_id=market_id,
@@ -292,7 +360,8 @@ class Lab:
                 token_side=side,
                 snapshot=book,
                 rules_hash=market.rules_hash,
-                fee_bps=fee,
+                fee_bps=fee_bps,
+                fee_rate=None if fee_rate is None else str(fee_rate),
                 meta=meta,
                 captured_at=captured_at,
             )
@@ -409,10 +478,10 @@ class Lab:
                 return DecisionRecord("NO_TRADE", "invalid_trading_cutoff")
 
         cluster_id = str(review["cluster_id"]) if review is not None else ""
-        yes_book, yes_fee, yes_book_id = self._load_book(market.yes_token_id)
-        no_book, no_fee, no_book_id = self._load_book(market.no_token_id)
+        yes_book, yes_fee, yes_book_id, yes_captured = self._load_book(market.yes_token_id)
+        no_book, no_fee, no_book_id, no_captured = self._load_book(market.no_token_id)
         fee_known = yes_fee is not None and no_fee is not None
-
+        gap = yes_no_cross_book_diagnostic(yes_book, no_book)
         account = self._account_view(cluster_id)
         gates = evaluate_entry_gates(
             self.risk,
@@ -424,37 +493,86 @@ class Lab:
             rules_hash_matches=hash_matches,
         )
         if not gates.allowed:
-            return DecisionRecord("NO_TRADE", gates.reason)
+            return DecisionRecord("NO_TRADE", gates.reason, details={"yes_no_gap": gap})
 
-        target = position_share_target(self.risk)
-        yes_buy = (
-            simulate_fok(yes_book, side="BUY", shares=target, fee_bps=yes_fee)
-            if yes_book
-            else FokFill(False, D(0), D(0), D(0), D(0), (), "missing_book")
+        forecast_age_h = (now - parse_utc(forecast.as_of_iso)).total_seconds() / 3600
+        if forecast_age_h > self.risk.max_forecast_age_hours:
+            return DecisionRecord(
+                "NO_TRADE",
+                "forecast_too_old",
+                details={"forecast_age_hours": forecast_age_h, "yes_no_gap": gap},
+            )
+        horizon_src = market.cutoff_at
+        if review is not None and review["trading_cutoff"]:
+            horizon_src = review["trading_cutoff"]
+        if horizon_src:
+            try:
+                horizon = parse_utc(horizon_src) - now
+                if horizon > timedelta(days=self.risk.max_settlement_days):
+                    return DecisionRecord(
+                        "NO_TRADE",
+                        "settlement_horizon",
+                        details={"horizon_days": str(horizon.days), "yes_no_gap": gap},
+                    )
+            except ValueError:
+                return DecisionRecord("NO_TRADE", "invalid_settlement_horizon", details={"yes_no_gap": gap})
+
+        yes_stale = (
+            yes_book is None
+            or yes_captured is None
+            or book_age_seconds(now, yes_captured, yes_book.raw) > self.risk.max_book_age_seconds
         )
-        no_buy = (
-            simulate_fok(no_book, side="BUY", shares=target, fee_bps=no_fee)
-            if no_book
-            else FokFill(False, D(0), D(0), D(0), D(0), (), "missing_book")
+        no_stale = (
+            no_book is None
+            or no_captured is None
+            or book_age_seconds(now, no_captured, no_book.raw) > self.risk.max_book_age_seconds
+        )
+        if yes_stale or no_stale:
+            return DecisionRecord("NO_TRADE", "stale_book", details={"yes_no_gap": gap})
+
+        reserve = self.risk.per_share_research_reserve()
+        yes_buy = self._sized_buy(yes_book, yes_fee) if yes_book is not None else FokFill(
+            False, D(0), D(0), D(0), D(0), (), "missing_book"
+        )
+        no_buy = self._sized_buy(no_book, no_fee) if no_book is not None else FokFill(
+            False, D(0), D(0), D(0), D(0), (), "missing_book"
         )
 
-        yes_ok = yes_buy.filled
-        no_ok = no_buy.filled
-        yes_all_in = all_in_buy_price(yes_buy, self.risk.ops_cost_reserve_per_trade) if yes_ok else None
-        no_all_in = all_in_buy_price(no_buy, self.risk.ops_cost_reserve_per_trade) if no_ok else None
+        def side_ok(book: OrderBook | None, fill: FokFill) -> str | None:
+            if book is None:
+                return "missing_book"
+            if not fill.filled:
+                return fill.reason
+            spread = best_spread(book)
+            if spread is None:
+                return "incomplete_book"
+            if spread > self.risk.max_spread:
+                return "wide_spread"
+            ask = book.asks[0].price
+            if ask < self.risk.price_band_low or ask > self.risk.price_band_high:
+                return "price_band"
+            return None
+
+        yes_block = side_ok(yes_book, yes_buy)
+        no_block = side_ok(no_book, no_buy)
+        yes_all_in = (
+            all_in_buy_price(yes_buy, reserve) if yes_buy.filled and yes_block is None else None
+        )
+        no_all_in = (
+            all_in_buy_price(no_buy, reserve) if no_buy.filled and no_block is None else None
+        )
 
         buy_yes_edge = (forecast.p_low - yes_all_in) if yes_all_in is not None else D("-1")
         buy_no_edge = ((D(1) - forecast.p_high) - no_all_in) if no_all_in is not None else D("-1")
 
         choice: tuple[str, FokFill, int | None, Decimal] | None = None
         if (
-            yes_ok
-            and yes_all_in is not None
+            yes_all_in is not None
             and buy_yes_edge >= self.risk.min_conservative_edge
             and buy_yes_edge >= buy_no_edge
         ):
             choice = ("YES", yes_buy, yes_book_id, buy_yes_edge)
-        elif no_ok and no_all_in is not None and buy_no_edge >= self.risk.min_conservative_edge:
+        elif no_all_in is not None and buy_no_edge >= self.risk.min_conservative_edge:
             choice = ("NO", no_buy, no_book_id, buy_no_edge)
 
         if choice is None:
@@ -464,8 +582,9 @@ class Lab:
                 details={
                     "buy_yes_edge": str(buy_yes_edge),
                     "buy_no_edge": str(buy_no_edge),
-                    "yes_fill": yes_buy.reason,
-                    "no_fill": no_buy.reason,
+                    "yes_fill": yes_buy.reason if yes_block is None else yes_block,
+                    "no_fill": no_buy.reason if no_block is None else no_block,
+                    "yes_no_gap": gap,
                 },
             )
 
@@ -473,12 +592,16 @@ class Lab:
         token_id = market.yes_token_id if token_side == "YES" else market.no_token_id
         cash_need = fill.notional + fill.fee
         if cash_need > account.cash:
-            return DecisionRecord("NO_TRADE", "insufficient_cash")
-        if fill.notional > self.risk.max_position_notional:
-            return DecisionRecord("NO_TRADE", "max_position_notional")
+            return DecisionRecord("NO_TRADE", "insufficient_cash", details={"yes_no_gap": gap})
+        if cash_need > self.risk.max_trade_cost:
+            return DecisionRecord("NO_TRADE", "max_trade_cost", details={"yes_no_gap": gap})
+        if cash_need > self.risk.max_market_cost:
+            return DecisionRecord("NO_TRADE", "max_market_cost", details={"yes_no_gap": gap})
         projected_cluster = account.cluster_notional + fill.notional
         if projected_cluster > self.risk.max_cluster_notional:
-            return DecisionRecord("NO_TRADE", "cluster_exposure")
+            return DecisionRecord("NO_TRADE", "cluster_exposure", details={"yes_no_gap": gap})
+        if account.open_entry_cost + cash_need > self.risk.max_open_entry_cost:
+            return DecisionRecord("NO_TRADE", "open_exposure", details={"yes_no_gap": gap})
 
         try:
             self.store.begin()
@@ -538,6 +661,8 @@ class Lab:
                 "levels": list(fill.levels),
                 "simulated": True,
                 "live_order": False,
+                "strategy": "A_specialist_fair_value",
+                "yes_no_gap": gap,
             },
         )
 
@@ -546,10 +671,10 @@ class Lab:
         if pos is None:
             raise LabError("no open position")
         self.refresh_books(market_id)
-        book, fee, book_id = self._load_book(pos["token_id"])
+        book, fee_rate, book_id, _captured = self._load_book(pos["token_id"])
         if book is None:
             raise LabError("missing_book")
-        fill = simulate_fok(book, side="SELL", shares=D(pos["shares"]), fee_bps=fee)
+        fill = simulate_fok(book, side="SELL", shares=D(pos["shares"]), fee_rate=fee_rate)
         if not fill.filled:
             raise LabError(f"close_fok_failed:{fill.reason}")
         proceeds = fill.notional - fill.fee
@@ -652,16 +777,40 @@ class Lab:
         # Ops ledger is recorded separately from trade cash so we do not double-count
         # the per-trade reserve that was only used for entry gating.
 
-    def _load_book(self, token_id: str | None) -> tuple[OrderBook | None, int | None, int | None]:
+    def _sized_buy(self, book: OrderBook, fee_rate: Decimal | None) -> FokFill:
+        depth = ask_depth(book)
+        cap = q_shares(depth * self.risk.max_depth_fraction)
+        if cap < book.min_order_size or cap < self.risk.min_fill_shares:
+            return FokFill(False, D(0), D(0), D(0), D(0), (), "depth_participation")
+        fill = simulate_fok(book, side="BUY", shares=cap, fee_rate=fee_rate)
+        if not fill.filled:
+            return fill
+        cash_need = fill.notional + fill.fee
+        if cash_need <= self.risk.max_trade_cost and cash_need <= self.risk.max_market_cost:
+            return fill
+        # Shrink by walking budget at best ask as a conservative upper bound.
+        if not book.asks:
+            return FokFill(False, D(0), D(0), D(0), D(0), (), "missing_book")
+        worst = book.asks[-1].price if book.asks else D(1)
+        reserve = self.risk.per_share_research_reserve()
+        max_by_cost = self.risk.max_trade_cost / (worst + reserve + D("0.000001"))
+        sized = q_shares(min(cap, max_by_cost))
+        if sized < book.min_order_size:
+            return FokFill(False, D(0), D(0), D(0), D(0), (), "max_trade_cost")
+        return simulate_fok(book, side="BUY", shares=sized, fee_rate=fee_rate)
+
+    def _load_book(
+        self, token_id: str | None
+    ) -> tuple[OrderBook | None, Decimal | None, int | None, str | None]:
         if not token_id:
-            return None, None, None
+            return None, None, None, None
         row = self.store.latest_book(token_id)
         if row is None:
-            return None, None, None
+            return None, None, None, None
         book = OrderBook.from_clob(json.loads(row["snapshot_json"]), token_id=token_id)
-        fee = row["fee_bps"]
-        fee_i = int(fee) if fee is not None else None
-        return book, fee_i, int(row["id"])
+        rate_s = row["fee_rate"] if "fee_rate" in row.keys() else None
+        fee_rate = D(rate_s) if rate_s not in (None, "") else None
+        return book, fee_rate, int(row["id"]), str(row["captured_at"])
 
     def mark_open_positions(self) -> tuple[Decimal, bool]:
         """Exit-depth mark of OPEN inventory. Incomplete marks block new entries."""
@@ -670,11 +819,11 @@ class Lab:
         marked = D(0)
         complete = True
         for pos in self.store.list_positions("OPEN"):
-            book, fee, _ = self._load_book(pos["token_id"])
+            book, fee_rate, _, _ = self._load_book(pos["token_id"])
             if book is None:
                 complete = False
                 continue
-            fill = simulate_fok(book, side="SELL", shares=D(pos["shares"]), fee_bps=fee)
+            fill = simulate_fok(book, side="SELL", shares=D(pos["shares"]), fee_rate=fee_rate)
             if not fill.filled:
                 complete = False
                 continue
@@ -699,6 +848,8 @@ class Lab:
             cluster_notional=self.store.cluster_open_notional(cluster_id) if cluster_id else D(0),
             paused=self.store.is_paused(),
             valuation_complete=complete,
+            entries_today=self.store.buy_fills_on_utc_day(self.now().date().isoformat()),
+            open_entry_cost=self.store.open_entry_cost(),
         )
 
     def snapshot(self) -> dict[str, Any]:
@@ -714,6 +865,17 @@ class Lab:
                 "out-of-sample economics and risk-limit adherence."
             ),
             "risk_version": acc["risk_version"],
+            "strategy_lock": "A_specialist_fair_value",
+            "strategy_note": (
+                "Primary A: specialist fair value (weather station/date first; "
+                "alt economic releases). Not a general LLM oracle. "
+                "B basket/RV research only — YES+NO gap is diagnostic, never auto-trade. "
+                "C market making later only."
+            ),
+            "legal_note": (
+                "HU SZTFH block status uncertain → stay PAPER. No VPN. "
+                "Money pilot needs separate legal clearance."
+            ),
             "paused": bool(acc["paused"]),
             "cash": str(self.store.cash()),
             "equity": str(equity),

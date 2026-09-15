@@ -75,7 +75,7 @@ def _mode() -> str:
 def build_lab_from_env() -> Lab:
     gamma, clob = build_adapters()
     data_dir = Path(os.environ.get("LAB_DATA_DIR", "data"))
-    risk_version = os.environ.get("LAB_RISK_VERSION", "risk-v1")
+    risk_version = os.environ.get("LAB_RISK_VERSION", "risk-v2")
     return Lab.open(
         mode=_mode(),
         data_dir=data_dir,

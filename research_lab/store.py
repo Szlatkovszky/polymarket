@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS books (
   snapshot_json TEXT NOT NULL,
   rules_hash TEXT NOT NULL,
   fee_bps INTEGER,
+  fee_rate TEXT,
   meta_json TEXT NOT NULL,
   captured_at TEXT NOT NULL
 );
@@ -187,6 +188,7 @@ class Store:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.executescript(SCHEMA)
+        self._migrate()
         stored = self.get_meta("mode")
         if stored is None:
             self.set_meta("mode", mode)
@@ -194,6 +196,11 @@ class Store:
             raise RuntimeError(
                 f"database {self.path} is mode={stored}, refusing to open as {mode}"
             )
+
+    def _migrate(self) -> None:
+        cols = {row[1] for row in self.conn.execute("PRAGMA table_info(books)")}
+        if "fee_rate" not in cols:
+            self.conn.execute("ALTER TABLE books ADD COLUMN fee_rate TEXT")
 
     def close(self) -> None:
         self.conn.close()
@@ -339,13 +346,14 @@ class Store:
         fee_bps: int | None,
         meta: Mapping[str, Any],
         captured_at: str,
+        fee_rate: str | None = None,
     ) -> int:
         cur = self.conn.execute(
             """
             INSERT INTO books(
               market_id, token_id, token_side, snapshot_json, rules_hash,
-              fee_bps, meta_json, captured_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              fee_bps, fee_rate, meta_json, captured_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 market_id,
@@ -354,6 +362,7 @@ class Store:
                 json.dumps(snapshot, sort_keys=True),
                 rules_hash,
                 fee_bps,
+                fee_rate,
                 json.dumps(meta, sort_keys=True),
                 captured_at,
             ),
@@ -497,6 +506,27 @@ class Store:
             "SELECT COUNT(*) AS n FROM positions WHERE status = 'OPEN'"
         ).fetchone()
         return int(row["n"])
+
+    def buy_fills_on_utc_day(self, day: str) -> int:
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS n FROM fills
+            WHERE side = 'BUY' AND substr(filled_at, 1, 10) = ?
+            """,
+            (day,),
+        ).fetchone()
+        return int(row["n"])
+
+    def open_entry_cost(self) -> Decimal:
+        rows = self.conn.execute(
+            """
+            SELECT shares, avg_price, entry_fee FROM positions WHERE status = 'OPEN'
+            """
+        ).fetchall()
+        total = D(0)
+        for row in rows:
+            total += D(row["shares"]) * D(row["avg_price"]) + D(row["entry_fee"])
+        return total
 
     def cluster_open_notional(self, cluster_id: str) -> Decimal:
         rows = self.conn.execute(

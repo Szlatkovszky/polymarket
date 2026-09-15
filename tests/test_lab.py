@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from research_lab.adapters import FixtureClob, FixtureGamma, NetworkGamma, AdapterError
 from research_lab.app import create_app
-from research_lab.core import AccountView, Risk, evaluate_entry_gates
+from research_lab.core import DEFAULT_RISK_VERSION, RISK_V2, AccountView, Risk, evaluate_entry_gates
 from research_lab.evaluation import (
     ClosedObservation,
     brier_score,
@@ -19,9 +20,10 @@ from research_lab.evaluation import (
     ops_cost_adjusted_pnl,
     settled_yes_outcome,
 )
+from research_lab.fees import parse_market_fee_rate
 from research_lab.forecast import ForecastValidationError, validate_forecast_dict
 from research_lab.hashing import rules_hash_from_text
-from research_lab.lab import Lab, LabError, OrderBook, simulate_fok
+from research_lab.lab import Lab, LabError, OrderBook, simulate_fok, yes_no_cross_book_diagnostic
 from research_lab.money import D, round_fee_up
 from research_lab.specialist import PlaceholderSpecialist, ResearchRequest
 from research_lab.store import Store
@@ -286,7 +288,7 @@ def test_stake_field_rejected_from_research_envelope(tmp_path: Path) -> None:
 
 
 def test_gates_daily_loss_drawdown() -> None:
-    risk = Risk.v1()
+    risk = Risk.v2()
     base = AccountView(
         cash=D("10000"),
         equity=D("10000"),
@@ -393,6 +395,102 @@ def test_http_paper_flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
         assert abstain.json()["imported"] is False
         grok = client.get("/api/grok/status").json()
         assert grok["wired"] is False
+
+
+def test_risk_v2_defaults() -> None:
+    risk = Risk.v2()
+    assert risk.version == RISK_V2 == DEFAULT_RISK_VERSION
+    assert risk.starting_cash == D("10000")
+    assert risk.max_trade_cost == D("50.000000")
+    assert risk.max_market_cost == D("100.000000")
+    assert risk.max_cluster_notional == D("200.000000")
+    assert risk.max_open_entry_cost == D("1000.000000")
+    assert risk.max_daily_loss == D("150.000000")
+    assert risk.max_drawdown == D("500.000000")
+    assert risk.min_conservative_edge == D("0.03")
+    assert risk.price_band_low == D("0.10")
+    assert risk.max_spread == D("0.03")
+    assert risk.max_depth_fraction == D("0.20")
+    assert risk.max_book_age_seconds == 5
+    assert risk.max_forecast_age_hours == 6
+    assert risk.max_settlement_days == 14
+    assert risk.max_entries_per_day == 20
+    assert risk.per_share_research_reserve() == D("0.004")
+
+
+def test_fee_schedule_and_unknown() -> None:
+    gamma = FixtureGamma()
+    assert parse_market_fee_rate(gamma.get_market("900001")) == D("0.05")
+    assert parse_market_fee_rate(gamma.get_market("900002")) is None
+    assert parse_market_fee_rate({"feesEnabled": True, "feeSchedule": {"rate": 0.05, "exponent": 1}}) is None
+    assert parse_market_fee_rate({"feesEnabled": False}) == D(0)
+
+
+def test_yes_no_gap_is_diagnostic_only() -> None:
+    yes = OrderBook.from_clob(
+        {
+            "asks": [{"price": "0.40", "size": "10"}],
+            "bids": [{"price": "0.39", "size": "10"}],
+            "min_order_size": "1",
+            "tick_size": "0.01",
+        },
+        token_id="y",
+    )
+    no = OrderBook.from_clob(
+        {
+            "asks": [{"price": "0.40", "size": "10"}],
+            "bids": [{"price": "0.39", "size": "10"}],
+            "min_order_size": "1",
+            "tick_size": "0.01",
+        },
+        token_id="n",
+    )
+    diag = yes_no_cross_book_diagnostic(yes, no)
+    assert diag["tradeable"] is False
+    assert D(diag["apparent_gap_vs_1"]) > 0
+
+
+def test_forecast_too_old(tmp_path: Path) -> None:
+    lab = _lab(tmp_path)
+    _prepare_tradeable(lab)
+    result = lab.import_forecast(
+        _forecast(
+            lab,
+            "900001",
+            forecast_id="fx-old-0001",
+            as_of="2026-09-15T05:00:00+00:00",
+            expires_at="2026-09-15T13:00:00+00:00",
+            sources=[
+                {
+                    "url": "https://example.invalid/fixture-station-demo-1",
+                    "available_at": "2026-09-15T04:30:00+00:00",
+                }
+            ],
+        )
+    )
+    assert result.action == "NO_TRADE"
+    assert result.reason == "forecast_too_old"
+    assert lab.store.list_positions("OPEN") == []
+
+
+def test_stale_book(tmp_path: Path) -> None:
+    lab = _lab(tmp_path)
+    _prepare_tradeable(lab)
+    assert isinstance(lab.clock, FrozenClock)
+    lab.clock.set(NOW + timedelta(seconds=6))
+    result = lab.import_forecast(_forecast(lab, "900001", forecast_id="fx-stale-0001"))
+    assert result.action == "NO_TRADE"
+    assert result.reason == "stale_book"
+
+
+def test_buy_does_not_use_yes_no_gap(tmp_path: Path) -> None:
+    lab = _lab(tmp_path)
+    _prepare_tradeable(lab)
+    result = lab.import_forecast(_forecast(lab, "900001", forecast_id="fx-gapdiag-0001"))
+    assert result.action == "BUY"
+    assert result.details["yes_no_gap"]["tradeable"] is False
+    assert result.details["strategy"] == "A_specialist_fair_value"
+    assert lab.risk.version == "risk-v2"
 
 
 def test_rules_hash_matches_logged_text() -> None:
