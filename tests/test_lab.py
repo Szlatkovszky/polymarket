@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from research_lab.adapters import FixtureClob, FixtureGamma, NetworkGamma, AdapterError
+from research_lab.adapters import (
+    FIXTURE_DIR,
+    AdapterError,
+    FixtureClob,
+    FixtureGamma,
+    NetworkGamma,
+    fixture_book_timestamp_ms,
+)
 from research_lab.app import create_app
 from research_lab.core import DEFAULT_RISK_VERSION, RISK_V2, AccountView, Risk, evaluate_entry_gates
 from research_lab.evaluation import (
@@ -23,11 +32,18 @@ from research_lab.evaluation import (
 from research_lab.fees import parse_market_fee_rate
 from research_lab.forecast import ForecastValidationError, validate_forecast_dict
 from research_lab.hashing import rules_hash_from_text
-from research_lab.lab import Lab, LabError, OrderBook, simulate_fok, yes_no_cross_book_diagnostic
+from research_lab.lab import (
+    Lab,
+    LabError,
+    OrderBook,
+    book_age_seconds,
+    simulate_fok,
+    yes_no_cross_book_diagnostic,
+)
 from research_lab.money import D, round_fee_up
 from research_lab.specialist import PlaceholderSpecialist, ResearchRequest
 from research_lab.store import Store
-from research_lab.timeutil import FrozenClock, parse_utc
+from research_lab.timeutil import FrozenClock, SystemUTCClock, isoformat_utc, parse_utc
 
 NOW = parse_utc("2026-09-15T12:00:00+00:00")
 MODEL = "weather-station-model-v1-calibration-v1"
@@ -71,6 +87,24 @@ def _forecast(lab: Lab, market_id: str, **overrides) -> dict:
     }
     body.update(overrides)
     return body
+
+
+class _RecordedTimestampClob:
+    """Network-like CLOB: recorded server timestamps are not rewritten."""
+
+    source_name = "network"
+
+    def __init__(self) -> None:
+        self.books = json.loads((FIXTURE_DIR / "clob_books.json").read_text(encoding="utf-8"))
+        self._fees = FixtureClob()
+
+    def get_book(self, token_id: str) -> dict[str, Any]:
+        if token_id not in self.books:
+            raise AdapterError(f"fixture book not found: {token_id}")
+        return dict(self.books[token_id])
+
+    def get_fee_bps(self, token_id: str) -> int | None:
+        return self._fees.get_fee_bps(token_id)
 
 
 def _prepare_tradeable(lab: Lab, market_id: str = "900001") -> None:
@@ -473,14 +507,96 @@ def test_forecast_too_old(tmp_path: Path) -> None:
     assert lab.store.list_positions("OPEN") == []
 
 
+def test_book_age_is_max_of_receive_and_server_time() -> None:
+    captured = isoformat_utc(NOW)
+    recorded_ms = fixture_book_timestamp_ms(NOW)
+    assert book_age_seconds(NOW, captured, {"timestamp": recorded_ms}) == D("0")
+    later = NOW + timedelta(seconds=6)
+    # Receive age 6s, server age 6s.
+    assert book_age_seconds(later, captured, {"timestamp": recorded_ms}) == D("6.0")
+    # Fresh receive, old server time (live/network book) → still stale.
+    old_ms = fixture_book_timestamp_ms(NOW - timedelta(hours=8))
+    age = book_age_seconds(NOW, captured, {"timestamp": old_ms})
+    assert age > Risk.v2().max_book_age_seconds
+    assert age >= D("28799")
+
+
 def test_stale_book(tmp_path: Path) -> None:
-    lab = _lab(tmp_path)
+    """Network-like recorded timestamps still fail risk-v2 after max_book_age_seconds."""
+    lab = Lab.open(
+        mode="PAPER",
+        data_dir=tmp_path / "paper-stale",
+        gamma=FixtureGamma(),
+        clob=_RecordedTimestampClob(),
+        clock=FrozenClock(NOW),
+    )
+    lab.ingest_markets()
     _prepare_tradeable(lab)
     assert isinstance(lab.clock, FrozenClock)
     lab.clock.set(NOW + timedelta(seconds=6))
     result = lab.import_forecast(_forecast(lab, "900001", forecast_id="fx-stale-0001"))
     assert result.action == "NO_TRADE"
     assert result.reason == "stale_book"
+
+
+def test_fixture_clob_overrides_recorded_timestamp_to_clock() -> None:
+    recorded = json.loads((FIXTURE_DIR / "clob_books.json").read_text(encoding="utf-8"))
+    frozen = FrozenClock(parse_utc("2026-09-15T20:47:00+00:00"))
+    book = FixtureClob(clock=frozen).get_book("tok-yes-900001")
+    expected = fixture_book_timestamp_ms(frozen.now())
+    assert recorded["tok-yes-900001"]["timestamp"] != expected
+    assert book["timestamp"] == expected
+
+
+def test_fixture_books_not_stale_immediately_after_wall_clock_ingest(tmp_path: Path) -> None:
+    """Hours-old fixture JSON timestamps must not fail freshness on ingest-now."""
+    lab = Lab.open(
+        mode="PAPER",
+        data_dir=tmp_path / "paper-wall",
+        gamma=FixtureGamma(),
+        clob=FixtureClob(),
+        clock=SystemUTCClock(),
+    )
+    lab.ingest_markets()
+    now = lab.now()
+    row = lab.store.latest_book("tok-yes-900001")
+    assert row is not None
+    snapshot = json.loads(row["snapshot_json"])
+    age = book_age_seconds(now, str(row["captured_at"]), snapshot)
+    assert age <= lab.risk.max_book_age_seconds
+    assert age <= 1
+    recorded = json.loads((FIXTURE_DIR / "clob_books.json").read_text(encoding="utf-8"))
+    assert snapshot["timestamp"] != recorded["tok-yes-900001"]["timestamp"]
+
+
+def test_fixture_import_buy_at_wall_clock_without_patching_json(tmp_path: Path) -> None:
+    lab = Lab.open(
+        mode="PAPER",
+        data_dir=tmp_path / "paper-wall-buy",
+        gamma=FixtureGamma(),
+        clob=FixtureClob(),
+        clock=SystemUTCClock(),
+    )
+    lab.ingest_markets()
+    _prepare_tradeable(lab)
+    now = lab.now()
+    result = lab.import_forecast(
+        _forecast(
+            lab,
+            "900001",
+            forecast_id="fx-wall-clock-0001",
+            as_of=isoformat_utc(now),
+            expires_at=isoformat_utc(now + timedelta(hours=1)),
+            sources=[
+                {
+                    "url": "https://example.invalid/fixture-station-demo-1",
+                    "available_at": isoformat_utc(now - timedelta(minutes=30)),
+                }
+            ],
+        )
+    )
+    assert result.reason != "stale_book"
+    assert result.action == "BUY"
 
 
 def test_buy_does_not_use_yes_no_gap(tmp_path: Path) -> None:

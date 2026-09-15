@@ -274,6 +274,10 @@ class Lab:
         self.gamma = gamma
         self.clob = clob
         self.clock = clock or SystemUTCClock()
+        # Fixture CLOB books must follow the lab clock so capture and server
+        # time stay aligned under FrozenClock; network adapters are untouched.
+        if getattr(self.clob, "source_name", None) == "fixtures" and hasattr(self.clob, "clock"):
+            self.clob.clock = self.clock
         self.research_budget = research_budget or ResearchBudget.from_env()
         self.placeholder_specialist = PlaceholderSpecialist()
         self.weather_specialist = weather_specialist or WeatherStationBaseline(
