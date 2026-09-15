@@ -38,6 +38,8 @@ class RulesReviewBody(BaseModel):
     trading_cutoff: str
     reviewer: str
     expected_resolution: str = ""
+    expected_settlement_source: str = ""
+    paper_model_version: str = ""
     notes: str = ""
 
 
@@ -74,6 +76,18 @@ class WeatherForecastBody(BaseModel):
 
 class GrokCritiqueBody(BaseModel):
     specialist: dict[str, Any] | None = None
+
+
+class PaperRunBody(BaseModel):
+    import_paper: bool = False
+    auto_settle: bool = False
+    max_cycles: int = 1
+    interval_seconds: float = 0.0
+    cluster_id: str | None = None
+    as_of: str | None = None
+    limit: int | None = None
+    max_markets: int | None = None
+    ingest: bool = True
 
 
 def _mode() -> str:
@@ -164,33 +178,43 @@ def create_app(lab: Lab | None = None) -> FastAPI:
         ids = current().ingest_markets()
         return {"ingested": ids, "source": getattr(current().gamma, "source_name", "unknown")}
 
+    @app.post("/api/discover")
+    def discover(limit: int | None = None, ingest: bool = True) -> dict[str, Any]:
+        try:
+            return current().discover_weather_markets(limit=limit, ingest=ingest)
+        except LabError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
     @app.get("/api/markets")
     def markets() -> dict[str, Any]:
         inst = current()
-        rows = []
-        for m in inst.store.list_markets():
-            review = inst.store.get_rules_review(m.market_id)
-            rows.append(
-                {
-                    "market_id": m.market_id,
-                    "question": m.question,
-                    "rules_hash": m.rules_hash,
-                    "yes_token_id": m.yes_token_id,
-                    "no_token_id": m.no_token_id,
-                    "resolution_source": m.resolution_source,
-                    "reviewed": review is not None,
-                    "cluster_id": None if review is None else review["cluster_id"],
-                }
-            )
-        return {"mode": inst.mode, "markets": rows}
+        return {"mode": inst.mode, "markets": inst.pending_reviews()}
+
+    @app.get("/api/markets/{market_id}")
+    def market_detail(market_id: str) -> dict[str, Any]:
+        try:
+            return current().market_review_bundle(market_id)
+        except LabError as exc:
+            raise HTTPException(404, str(exc)) from exc
 
     @app.post("/api/rules-review")
-    def rules_review(body: RulesReviewBody) -> dict[str, str]:
+    def rules_review(body: RulesReviewBody) -> dict[str, Any]:
         try:
-            current().review_rules(**body.model_dump())
+            recorded = current().review_rules(
+                market_id=body.market_id,
+                rules_hash=body.rules_hash,
+                cluster_id=body.cluster_id,
+                trading_cutoff=body.trading_cutoff,
+                reviewer=body.reviewer,
+                expected_resolution=body.expected_resolution,
+                expected_settlement_source=body.expected_settlement_source,
+                paper_model_version=body.paper_model_version,
+                notes=body.notes,
+                authorize_model_version=body.paper_model_version or None,
+            )
         except LabError as exc:
             raise HTTPException(400, str(exc)) from exc
-        return {"status": "recorded"}
+        return recorded
 
     @app.post("/api/models/authorize")
     def authorize(body: AuthorizeModelBody) -> dict[str, str]:
@@ -393,6 +417,56 @@ def create_app(lab: Lab | None = None) -> FastAPI:
             "edge_proven": False,
             "estimates": inst.store.list_research_estimates(market_id),
         }
+
+    @app.post("/api/specialist/weather/replay/{estimate_id}")
+    def specialist_weather_replay(estimate_id: int) -> dict[str, Any]:
+        try:
+            return current().replay_research_estimate(estimate_id)
+        except LabError as exc:
+            raise HTTPException(404, str(exc)) from exc
+
+    @app.get("/api/archive")
+    def raw_archive(
+        market_id: str | None = None, kind: str | None = None, limit: int = 100
+    ) -> dict[str, Any]:
+        inst = current()
+        return {
+            "source": getattr(inst.gamma, "source_name", "unknown"),
+            "entries": inst.store.list_raw_archive(
+                market_id=market_id, kind=kind, limit=limit
+            ),
+        }
+
+    @app.get("/api/paper-runs")
+    def paper_runs(cycle_id: str | None = None) -> dict[str, Any]:
+        return {"runs": current().store.list_paper_runs(cycle_id=cycle_id)}
+
+    @app.post("/api/paper-run")
+    def paper_run(body: PaperRunBody | None = None) -> dict[str, Any]:
+        from research_lab.paper_runner import PaperRunConfig, run_forward_paper
+
+        payload = body or PaperRunBody()
+        try:
+            return run_forward_paper(
+                current(),
+                PaperRunConfig(
+                    import_paper=payload.import_paper,
+                    auto_settle=payload.auto_settle,
+                    max_cycles=payload.max_cycles,
+                    interval_seconds=payload.interval_seconds,
+                    cluster_id=payload.cluster_id,
+                    as_of=payload.as_of,
+                    discover_limit=payload.limit,
+                    ingest=payload.ingest,
+                    max_markets=payload.max_markets,
+                ),
+            )
+        except LabError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.get("/api/kapu-b/status")
+    def kapu_b() -> dict[str, Any]:
+        return current().kapu_b_status()
 
     return app
 
