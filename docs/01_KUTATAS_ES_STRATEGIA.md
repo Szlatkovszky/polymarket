@@ -155,8 +155,10 @@ Code: `research_lab/specialist.py` (`WeatherStationBaseline`),
 - `risk-v2` remains the only stake/decision authority. YES+NO gap stays diagnostic.
 
 Still-unproven: any out-of-sample Brier/log-loss or cost-adjusted P&L advantage
-vs mid or vs the base rate. Next gate is **Kapu B** (forward paper data collection
-on a pre-registered cluster), not live trading.
+vs mid or vs the base rate. **Kapu B scaffolding** (discovery, raw archive,
+rules-review CLI, re-runnable forecast log, dry paper-run) is a measurement path
+on a pre-registered cluster. It is **not** a locked forward sample and **not**
+an edge. Stay PAPER.
 
 ## Explicit non-goals for this phase
 

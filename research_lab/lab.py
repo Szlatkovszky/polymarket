@@ -25,7 +25,13 @@ from research_lab.core import (
 )
 from research_lab.fees import parse_market_fee_rate
 from research_lab.forecast import ForecastValidationError, ValidatedForecast, validate_forecast_dict
-from research_lab.hashing import rules_hash_from_text
+from research_lab.discovery import (
+    classify_weather_market,
+    classify_weather_markets,
+    discover_limit_from_env,
+    payload_hash,
+)
+from research_lab.hashing import rules_hash_from_text, sha256_hex
 from research_lab.money import D, polymarket_taker_fee, q_cash, q_shares, round_fee_up
 from research_lab.research_budget import ResearchBudget
 from research_lab.specialist import (
@@ -33,6 +39,8 @@ from research_lab.specialist import (
     PlaceholderSpecialist,
     ResearchRequest,
     WeatherStationBaseline,
+    research_request_from_dict,
+    research_request_to_dict,
 )
 from research_lab.store import Store
 from research_lab.timeutil import Clock, SystemUTCClock, isoformat_utc, parse_utc
@@ -312,33 +320,134 @@ class Lab:
     def resume(self) -> None:
         self.store.set_paused(False)
 
-    def ingest_markets(self, limit: int = 20) -> list[str]:
+    def ingest_markets(self, limit: int = 20, *, weather_only: bool = False) -> list[str]:
         raw_markets = self.gamma.list_markets(limit=limit)
         ids: list[str] = []
         captured = isoformat_utc(self.now())
+        source = getattr(self.gamma, "source_name", "unknown")
+        self._archive_raw(
+            kind="gamma_list",
+            source=source,
+            payload=raw_markets,
+            captured_at=captured,
+        )
         for raw in raw_markets:
-            market_id = str(raw["id"])
-            rules_text = _rules_text(raw)
-            yes_id, no_id = _token_ids(raw)
-            self.store.upsert_market(
-                {
-                    "market_id": market_id,
-                    "condition_id": raw.get("conditionId") or raw.get("condition_id"),
-                    "question": raw.get("question"),
-                    "rules_text": rules_text,
-                    "rules_hash": rules_hash_from_text(rules_text),
-                    "yes_token_id": yes_id,
-                    "no_token_id": no_id,
-                    "cutoff_at": raw.get("endDate") or raw.get("end_date"),
-                    "timezone": "UTC",
-                    "resolution_source": raw.get("resolutionSource") or raw.get("resolution_source"),
-                    "raw_json": json.dumps(raw, sort_keys=True),
-                    "ingested_at": captured,
-                }
-            )
-            self._snapshot_books(market_id, yes_id, no_id, captured)
-            ids.append(market_id)
+            classified = classify_weather_market(raw)
+            if weather_only and not classified.weather_like:
+                continue
+            ids.append(self._persist_ingested_market(raw, classified, captured))
         return ids
+
+    def discover_weather_markets(
+        self, limit: int | None = None, *, ingest: bool = True
+    ) -> dict[str, Any]:
+        """Classify weather-like Gamma rows. Fixture default; network GET is opt-in."""
+
+        cap = limit if limit is not None else discover_limit_from_env()
+        raw_markets = self.gamma.list_markets(limit=cap)
+        captured = isoformat_utc(self.now())
+        source = getattr(self.gamma, "source_name", "unknown")
+        self._archive_raw(
+            kind="gamma_list",
+            source=source,
+            payload=raw_markets,
+            captured_at=captured,
+        )
+        classified = classify_weather_markets(raw_markets)
+        ingested: list[str] = []
+        if ingest:
+            for row in classified:
+                if not row.weather_like:
+                    continue
+                ingested.append(self._persist_ingested_market(row.raw, row, captured))
+        return {
+            "source": source,
+            "network": source == "network",
+            "live_orders": False,
+            "classified": [
+                {
+                    "market_id": row.market_id,
+                    "weather_like": row.weather_like,
+                    "reason": row.reason,
+                    "specialist_parse_ok": row.specialist_parse_ok,
+                    "specialist_parse_reason": row.specialist_parse_reason,
+                    "question": row.question,
+                    "rules_hash": row.rules_hash,
+                    "resolution_source": row.resolution_source,
+                }
+                for row in classified
+            ],
+            "weather_like_ids": [row.market_id for row in classified if row.weather_like],
+            "ingested": ingested,
+            "captured_at": captured,
+            "edge_proven": False,
+        }
+
+    def _persist_ingested_market(
+        self,
+        raw: Mapping[str, Any],
+        classified: Any,
+        captured: str,
+    ) -> str:
+        market_id = str(raw["id"])
+        rules_text = classified.rules_text if classified is not None else _rules_text(raw)
+        rules_hash = (
+            classified.rules_hash if classified is not None else rules_hash_from_text(rules_text)
+        )
+        yes_id, no_id = _token_ids(raw)
+        source = getattr(self.gamma, "source_name", "unknown")
+        self.store.upsert_market(
+            {
+                "market_id": market_id,
+                "condition_id": raw.get("conditionId") or raw.get("condition_id"),
+                "question": raw.get("question"),
+                "rules_text": rules_text,
+                "rules_hash": rules_hash,
+                "yes_token_id": yes_id,
+                "no_token_id": no_id,
+                "cutoff_at": raw.get("endDate") or raw.get("end_date"),
+                "timezone": "UTC",
+                "resolution_source": raw.get("resolutionSource") or raw.get("resolution_source"),
+                "raw_json": json.dumps(raw, sort_keys=True),
+                "ingested_at": captured,
+            }
+        )
+        self._archive_raw(
+            kind="gamma_market",
+            source=source,
+            payload=dict(raw),
+            market_id=market_id,
+            rules_hash=rules_hash,
+            captured_at=captured,
+        )
+        self._snapshot_books(market_id, yes_id, no_id, captured)
+        return market_id
+
+    def _archive_raw(
+        self,
+        *,
+        kind: str,
+        source: str,
+        payload: Any,
+        captured_at: str,
+        market_id: str | None = None,
+        token_id: str | None = None,
+        url: str | None = None,
+        rules_hash: str | None = None,
+    ) -> int:
+        return self.store.insert_raw_archive(
+            {
+                "kind": kind,
+                "source": source,
+                "market_id": market_id,
+                "token_id": token_id,
+                "url": url,
+                "payload": payload,
+                "payload_hash": payload_hash(payload),
+                "rules_hash": rules_hash,
+                "captured_at": captured_at,
+            }
+        )
 
     def refresh_books(self, market_id: str) -> None:
         market = self.store.get_market(market_id)
@@ -375,6 +484,15 @@ class Lab:
                 "fee_rate": None if fee_rate is None else str(fee_rate),
                 "feesEnabled": raw_market.get("feesEnabled"),
             }
+            self._archive_raw(
+                kind="clob_book",
+                source=getattr(self.clob, "source_name", "unknown"),
+                payload=book,
+                market_id=market_id,
+                token_id=token_id,
+                rules_hash=market.rules_hash,
+                captured_at=captured_at,
+            )
             self.store.insert_book(
                 market_id=market_id,
                 token_id=token_id,
@@ -396,26 +514,98 @@ class Lab:
         trading_cutoff: str,
         reviewer: str,
         expected_resolution: str = "",
+        expected_settlement_source: str = "",
+        paper_model_version: str = "",
         notes: str = "",
-    ) -> None:
+        authorize_model_version: str | None = None,
+    ) -> dict[str, Any]:
         market = self.store.get_market(market_id)
         if market is None:
             raise LabError("market not ingested")
         if rules_hash != market.rules_hash:
             raise LabError("rules_hash must match the logged market text exactly")
         parse_utc(trading_cutoff)
+        settlement = (expected_settlement_source or expected_resolution or "").strip()
+        model_version = (authorize_model_version or paper_model_version or "").strip()
         self.store.insert_rules_review(
             {
                 "market_id": market_id,
                 "rules_hash": rules_hash,
                 "cluster_id": cluster_id,
                 "trading_cutoff": isoformat_utc(parse_utc(trading_cutoff)),
-                "expected_resolution": expected_resolution,
+                "expected_resolution": expected_resolution or settlement,
+                "expected_settlement_source": settlement,
+                "paper_model_version": model_version or None,
                 "reviewer": reviewer,
                 "reviewed_at": isoformat_utc(self.now()),
                 "notes": notes,
             }
         )
+        if model_version:
+            self.authorize_model(
+                model_version,
+                notes=f"paper-use only; recorded with rules review of {market_id}",
+            )
+        return {
+            "status": "recorded",
+            "market_id": market_id,
+            "rules_hash": rules_hash,
+            "cluster_id": cluster_id,
+            "trading_cutoff": isoformat_utc(parse_utc(trading_cutoff)),
+            "expected_settlement_source": settlement,
+            "paper_model_version": model_version or None,
+            "authorized_for_paper_use_only": bool(model_version),
+            "note": "PAPER review only. Not a statistical qualification or live promotion.",
+        }
+
+    def market_review_bundle(self, market_id: str) -> dict[str, Any]:
+        market = self.store.get_market(market_id)
+        if market is None:
+            raise LabError(f"unknown market {market_id}")
+        review = self.store.get_rules_review(market_id)
+        return {
+            "market_id": market.market_id,
+            "question": market.question,
+            "rules_text": market.rules_text,
+            "rules_hash": market.rules_hash,
+            "cutoff_at": market.cutoff_at,
+            "resolution_source": market.resolution_source,
+            "ingested_at": market.ingested_at,
+            "reviewed": review is not None,
+            "review": None if review is None else dict(review),
+            "authorized_models": self.store.list_authorized_models(),
+            "mode": self.mode,
+            "live_trading": False,
+            "note": (
+                "Human must record the exact logged rules_hash, semantic cluster, "
+                "trading cutoff, and expected settlement source. Authorizing a "
+                "model is a PAPER-use flag, not a qualification."
+            ),
+        }
+
+    def pending_reviews(self) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for market in self.store.list_markets():
+            review = self.store.get_rules_review(market.market_id)
+            out.append(
+                {
+                    "market_id": market.market_id,
+                    "question": market.question,
+                    "rules_hash": market.rules_hash,
+                    "yes_token_id": market.yes_token_id,
+                    "no_token_id": market.no_token_id,
+                    "resolution_source": market.resolution_source,
+                    "reviewed": review is not None,
+                    "cluster_id": None if review is None else review["cluster_id"],
+                    "expected_settlement_source": None
+                    if review is None
+                    else (review["expected_settlement_source"] or review["expected_resolution"]),
+                    "paper_model_version": None
+                    if review is None
+                    else review["paper_model_version"],
+                }
+            )
+        return out
 
     def authorize_model(self, model_version: str, notes: str = "") -> None:
         """Paper-use flag only — not a statistical qualification."""
@@ -478,7 +668,11 @@ class Lab:
             specialist=self.weather_specialist,
             expires_hours=expires_hours,
         )
-        self.store.insert_research_estimate(
+        request_payload = research_request_to_dict(request)
+        input_hash = sha256_hex(
+            json.dumps(request_payload, sort_keys=True, separators=(",", ":"))
+        )
+        estimate_id = self.store.insert_research_estimate(
             {
                 "market_id": request.market_id,
                 "rules_hash": request.rules_hash,
@@ -494,12 +688,116 @@ class Lab:
                     "forecast_id": (decision.get("forecast") or {}).get("forecast_id"),
                     "variants": decision.get("variants"),
                 },
+                "request": request_payload,
+                "input_hash": input_hash,
                 "created_at": isoformat_utc(self.now()),
             }
         )
+        self.store.insert_decision(
+            {
+                "forecast_id": (decision.get("forecast") or {}).get("forecast_id"),
+                "market_id": request.market_id,
+                "action": str(decision.get("action") or "ABSTAIN"),
+                "reason": str(decision.get("reason") or ""),
+                "token_side": None,
+                "details": {
+                    "logged_specialist": True,
+                    "imported": False,
+                    "estimate_id": estimate_id,
+                    "input_hash": input_hash,
+                },
+                "decided_at": isoformat_utc(self.now()),
+            }
+        )
         decision["logged"] = True
+        decision["estimate_id"] = estimate_id
+        decision["input_hash"] = input_hash
         decision["yes_no_gap_tradeable"] = False
         return decision
+
+    def replay_research_estimate(
+        self, estimate_id: int, *, expires_hours: float = 3.0
+    ) -> dict[str, Any]:
+        """Re-run a logged specialist request. Does not import or trade."""
+
+        row = self.store.get_research_estimate(estimate_id)
+        if row is None:
+            raise LabError(f"unknown research estimate {estimate_id}")
+        payload = row.get("request")
+        if not payload:
+            raise LabError("research estimate is missing re-runnable request_json")
+        request = research_request_from_dict(payload)
+        decision = run_weather_baseline(
+            request,
+            specialist=self.weather_specialist,
+            expires_hours=expires_hours,
+        )
+        decision["replay_of"] = estimate_id
+        decision["input_hash"] = row.get("input_hash")
+        decision["logged"] = False
+        decision["imported"] = False
+        decision["edge_proven"] = False
+        return decision
+
+    def paper_authorization(
+        self, market_id: str, model_version: str
+    ) -> tuple[bool, str]:
+        """Whether PAPER import is allowed. Positions still go through risk-v2."""
+
+        market = self.store.get_market(market_id)
+        if market is None:
+            return False, "market_not_ingested"
+        review = self.store.get_rules_review(market_id)
+        if review is None or review["rules_hash"] != market.rules_hash:
+            return False, "missing_rules_review"
+        if not self.store.model_authorized(model_version):
+            return False, "model_not_authorized"
+        pinned = (review["paper_model_version"] or "").strip()
+        if pinned and pinned != model_version:
+            return False, "model_not_authorized_for_market"
+        return True, "ok"
+
+    def kapu_b_status(self) -> dict[str, Any]:
+        reviews = self.store.list_rules_reviews()
+        estimates = self.store.list_research_estimates(limit=20)
+        archive_n = len(self.store.list_raw_archive(limit=500))
+        return {
+            "gate": "B",
+            "claimed": False,
+            "edge_proven": False,
+            "mode": self.mode,
+            "live_trading": False,
+            "hungary": "stay PAPER",
+            "measurable": [
+                "weather_like_discovery_via_get_only_adapters",
+                "raw_archive_plus_market_meta_plus_book_snapshots_plus_rules_hash",
+                "human_rules_review_hash_cluster_cutoff_settlement_source",
+                "paper_only_model_authorize",
+                "forecast_abstain_refusal_archive_with_rerunnable_inputs",
+                "forward_paper_runner_dry_loop",
+            ],
+            "missing": [
+                "recorded_live_vintages_and_official_daily_max_watcher",
+                "fitted_calibration_vintage",
+                "locked_forward_sample_and_cost_adjusted_pnl",
+                "proven_edge",
+                "live_order_wallet_redeem",
+            ],
+            "counts": {
+                "markets": len(self.store.list_markets()),
+                "reviews": len(reviews),
+                "authorized_models": len(self.store.list_authorized_models()),
+                "research_estimates": len(estimates),
+                "raw_archive_preview": archive_n,
+                "paper_runs_preview": len(self.store.list_paper_runs(limit=20)),
+                "open_positions": self.store.open_position_count(),
+            },
+            "research_budget": self.research_budget.status(),
+            "note": (
+                "Kapu B scaffolding is a measurement path. No historical P&L here "
+                "is evidence of an edge. Stay PAPER while HU eligibility is uncertain."
+            ),
+        }
 
     def import_forecast(self, payload: Mapping[str, Any], *, decide: bool = True) -> DecisionRecord:
         forecast = validate_forecast_dict(payload)

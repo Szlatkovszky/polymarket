@@ -140,7 +140,62 @@ still cannot place orders. If the contract names a different resolution provider
 the specialist ABSTAINs instead of swapping in NWS.
 
 This path does **not** claim profitability. Identity calibration and Normal tails
-are known limitations; Kapu B (forward paper data) is the next gate.
+are known limitations; Kapu B (forward paper data) is a **measurement path**,
+not a proven edge.
+
+## Kapu B — forward paper collection (still PAPER)
+
+Measurement only. Fixture Gamma/CLOB is the CI default. Live public GET is
+off unless both flags are set:
+
+```bash
+export POLYMARKET_DATA_SOURCE=network
+export POLYMARKET_ALLOW_NETWORK=1
+```
+
+That combination still cannot place orders. Default tests patch adapters closed.
+
+```bash
+export LAB_MODE=PAPER
+export POLYMARKET_DATA_SOURCE=fixtures
+export POLYMARKET_ALLOW_NETWORK=0
+export WEATHER_DATA_SOURCE=fixtures
+export NWS_ALLOW_NETWORK=0
+
+# 1. Discover weather-like markets; persist raw archive + meta + books + rules_hash
+python -m research_lab discover --data-dir data
+
+# 2. Human rules review (exact logged hash, cluster, cutoff, settlement source)
+python -m research_lab show-rules --market-id 900004 --data-dir data
+python -m research_lab rules-review --market-id 900004 \
+  --rules-hash <exact-logged-hash> \
+  --cluster-id kmia-station-date \
+  --trading-cutoff 2026-09-16T22:00:00+00:00 \
+  --expected-settlement-source https://api.weather.gov/stations/KMIA \
+  --reviewer you \
+  --authorize-model weather-station-baseline-v1-calibration-identity-stub-v0 \
+  --data-dir data
+
+# 3. Dry forward cycle (logs PROPOSE/ABSTAIN; does not import; never auto-settles)
+python -m research_lab paper-run --as-of 2026-09-15T12:00:00+00:00 --data-dir data
+
+# Optional: import PROPOSE envelopes through risk-v2 after review + authorize
+python -m research_lab paper-run --import-paper --as-of 2026-09-15T12:00:00+00:00 \
+  --cluster-id kmia-station-date --data-dir data
+```
+
+Without a matching rules review, risk-v2 still refuses positions
+(`missing_rules_review`). Settlement stays `POST /api/settle` with a human
+`source_url`. `paper-run` will reject any auto-settle flag.
+
+Research call/cost ceilings: `RESEARCH_MAX_CALLS_PER_CYCLE`,
+`RESEARCH_COST_CEILING_USD`, `RESEARCH_MIN_INTERVAL_SECONDS` (network spacing).
+
+Replay a logged specialist run from archived raw inputs:
+
+```bash
+python -m research_lab replay-estimate --estimate-id 1 --data-dir data
+```
 
 ## Endpoints
 
@@ -152,10 +207,16 @@ are known limitations; Kapu B (forward paper data) is the next gate.
 | GET | `/api/export.csv` | PAPER only |
 | GET | `/api/evaluation` | Metric stubs; `edge_proven: false` |
 | POST | `/api/ingest` | Fixture or GET-only network |
-| GET | `/api/markets` | Includes `rules_hash` |
-| POST | `/api/rules-review` | Human gate |
+| POST | `/api/discover` | Weather-like classify + optional ingest; archives raw GET |
+| GET | `/api/markets` | Includes `rules_hash` + review status |
+| GET | `/api/markets/{id}` | Full rules text for human review |
+| POST | `/api/rules-review` | Human gate (hash, cluster, cutoff, settlement source, optional PAPER model) |
 | POST | `/api/models/authorize` | Paper-use only |
 | POST | `/api/forecast` | Import + decision path |
+| POST | `/api/paper-run` | Dry/loop collection; never auto-settles |
+| GET | `/api/paper-runs` | Forward-run log |
+| GET | `/api/archive` | Raw Gamma/CLOB payload archive |
+| GET | `/api/kapu-b/status` | Measurement vs missing; `edge_proven: false` |
 | POST | `/api/worker/run` | Re-run a stored forecast id |
 | POST | `/api/close` | Simulated FOK sell |
 | POST | `/api/settle` | Manual cited settlement |
@@ -165,7 +226,8 @@ are known limitations; Kapu B (forward paper data) is the next gate.
 | GET | `/api/research/budget` | Research + Grok ceilings; not a stake |
 | GET | `/api/specialist/placeholder` | Always ABSTAIN |
 | POST | `/api/specialist/weather` | Weather baseline envelope; does not trade unless `import_paper` |
-| GET | `/api/specialist/weather/log` | Logged comparison tracks |
+| GET | `/api/specialist/weather/log` | Logged comparison tracks + re-runnable request |
+| POST | `/api/specialist/weather/replay/{id}` | Re-run archived raw inputs; does not trade |
 
 ## Layout vs átadás names
 

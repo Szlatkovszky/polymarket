@@ -46,6 +46,34 @@ class ResearchRequest:
     specialist_hints: Mapping[str, Any] = field(default_factory=dict)
 
 
+def research_request_to_dict(request: ResearchRequest) -> dict[str, Any]:
+    """Canonical raw inputs so a logged run can be replayed offline."""
+
+    return {
+        "market_id": request.market_id,
+        "condition_id": request.condition_id,
+        "rules_text": request.rules_text,
+        "rules_hash": request.rules_hash,
+        "as_of": request.as_of,
+        "cutoff_at": request.cutoff_at,
+        "resolution_source": request.resolution_source,
+        "specialist_hints": dict(request.specialist_hints or {}),
+    }
+
+
+def research_request_from_dict(payload: Mapping[str, Any]) -> ResearchRequest:
+    return ResearchRequest(
+        market_id=str(payload.get("market_id") or ""),
+        condition_id=payload.get("condition_id"),
+        rules_text=str(payload.get("rules_text") or ""),
+        rules_hash=str(payload.get("rules_hash") or ""),
+        as_of=str(payload.get("as_of") or ""),
+        cutoff_at=payload.get("cutoff_at"),
+        resolution_source=payload.get("resolution_source"),
+        specialist_hints=dict(payload.get("specialist_hints") or {}),
+    )
+
+
 @dataclass(frozen=True)
 class SpecialistEstimate:
     status: Literal["ABSTAIN", "ESTIMATE"]

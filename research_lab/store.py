@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS rules_reviews (
   cluster_id TEXT NOT NULL,
   trading_cutoff TEXT NOT NULL,
   expected_resolution TEXT,
+  expected_settlement_source TEXT,
+  paper_model_version TEXT,
   reviewer TEXT NOT NULL,
   reviewed_at TEXT NOT NULL,
   notes TEXT
@@ -165,6 +167,32 @@ CREATE TABLE IF NOT EXISTS research_estimates (
   reason TEXT NOT NULL,
   variant_json TEXT NOT NULL,
   decision_json TEXT NOT NULL,
+  request_json TEXT,
+  input_hash TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS raw_archive (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  source TEXT NOT NULL,
+  market_id TEXT,
+  token_id TEXT,
+  url TEXT,
+  payload_json TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  rules_hash TEXT,
+  captured_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS paper_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cycle_id TEXT NOT NULL,
+  market_id TEXT,
+  as_of TEXT,
+  action TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  details_json TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
 
@@ -172,6 +200,9 @@ CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status);
 CREATE INDEX IF NOT EXISTS idx_books_market ON books(market_id, captured_at);
 CREATE INDEX IF NOT EXISTS idx_research_estimates_market
   ON research_estimates(market_id, as_of);
+CREATE INDEX IF NOT EXISTS idx_raw_archive_market
+  ON raw_archive(market_id, captured_at);
+CREATE INDEX IF NOT EXISTS idx_paper_runs_cycle ON paper_runs(cycle_id, id);
 """
 
 
@@ -217,6 +248,20 @@ class Store:
         cols = {row[1] for row in self.conn.execute("PRAGMA table_info(books)")}
         if "fee_rate" not in cols:
             self.conn.execute("ALTER TABLE books ADD COLUMN fee_rate TEXT")
+        review_cols = {row[1] for row in self.conn.execute("PRAGMA table_info(rules_reviews)")}
+        if "expected_settlement_source" not in review_cols:
+            self.conn.execute(
+                "ALTER TABLE rules_reviews ADD COLUMN expected_settlement_source TEXT"
+            )
+        if "paper_model_version" not in review_cols:
+            self.conn.execute("ALTER TABLE rules_reviews ADD COLUMN paper_model_version TEXT")
+        est_cols = {
+            row[1] for row in self.conn.execute("PRAGMA table_info(research_estimates)")
+        }
+        if "request_json" not in est_cols:
+            self.conn.execute("ALTER TABLE research_estimates ADD COLUMN request_json TEXT")
+        if "input_hash" not in est_cols:
+            self.conn.execute("ALTER TABLE research_estimates ADD COLUMN input_hash TEXT")
 
     def close(self) -> None:
         self.conn.close()
@@ -392,17 +437,24 @@ class Store:
         ).fetchone()
 
     def insert_rules_review(self, row: Mapping[str, Any]) -> None:
+        expected_resolution = row.get("expected_resolution") or ""
+        expected_settlement = (
+            row.get("expected_settlement_source") or expected_resolution or ""
+        )
         self.conn.execute(
             """
             INSERT INTO rules_reviews(
               market_id, rules_hash, cluster_id, trading_cutoff,
-              expected_resolution, reviewer, reviewed_at, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              expected_resolution, expected_settlement_source, paper_model_version,
+              reviewer, reviewed_at, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(market_id) DO UPDATE SET
               rules_hash = excluded.rules_hash,
               cluster_id = excluded.cluster_id,
               trading_cutoff = excluded.trading_cutoff,
               expected_resolution = excluded.expected_resolution,
+              expected_settlement_source = excluded.expected_settlement_source,
+              paper_model_version = excluded.paper_model_version,
               reviewer = excluded.reviewer,
               reviewed_at = excluded.reviewed_at,
               notes = excluded.notes
@@ -412,7 +464,9 @@ class Store:
                 row["rules_hash"],
                 row["cluster_id"],
                 row["trading_cutoff"],
-                row.get("expected_resolution"),
+                expected_resolution,
+                expected_settlement,
+                row.get("paper_model_version") or None,
                 row["reviewer"],
                 row["reviewed_at"],
                 row.get("notes"),
@@ -423,6 +477,18 @@ class Store:
         return self.conn.execute(
             "SELECT * FROM rules_reviews WHERE market_id = ?", (market_id,)
         ).fetchone()
+
+    def list_rules_reviews(self) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT * FROM rules_reviews ORDER BY reviewed_at"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_authorized_models(self) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT * FROM authorized_models ORDER BY model_version"
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def authorize_model(self, model_version: str, authorized_at: str, notes: str = "") -> None:
         self.conn.execute(
@@ -623,12 +689,20 @@ class Store:
         return [dict(r) for r in self.conn.execute("SELECT * FROM ops_costs ORDER BY id")]
 
     def insert_research_estimate(self, row: Mapping[str, Any]) -> int:
+        request_payload = row.get("request") if "request" in row else row.get("request_json")
+        if isinstance(request_payload, str):
+            request_json = request_payload
+        elif request_payload is None:
+            request_json = None
+        else:
+            request_json = json.dumps(request_payload, sort_keys=True)
         cur = self.conn.execute(
             """
             INSERT INTO research_estimates(
               market_id, rules_hash, as_of, model_version, calibration_version,
-              status, reason, variant_json, decision_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              status, reason, variant_json, decision_json, request_json,
+              input_hash, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 row["market_id"],
@@ -640,10 +714,20 @@ class Store:
                 row["reason"],
                 json.dumps(row.get("variants") or {}, sort_keys=True),
                 json.dumps(row.get("decision") or {}, sort_keys=True),
+                request_json,
+                row.get("input_hash"),
                 row["created_at"],
             ),
         )
         return int(cur.lastrowid)
+
+    def get_research_estimate(self, estimate_id: int) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM research_estimates WHERE id = ?", (estimate_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return self._decode_research_estimate(row)
 
     def list_research_estimates(
         self, market_id: str | None = None, limit: int = 200
@@ -662,11 +746,105 @@ class Store:
                 "SELECT * FROM research_estimates ORDER BY id DESC LIMIT ?",
                 (limit,),
             ).fetchall()
+        return [self._decode_research_estimate(row) for row in rows]
+
+    def _decode_research_estimate(self, row: sqlite3.Row) -> dict[str, Any]:
+        item = dict(row)
+        item["variants"] = json.loads(item.pop("variant_json") or "{}")
+        item["decision"] = json.loads(item.pop("decision_json") or "{}")
+        raw_request = item.pop("request_json", None)
+        if raw_request:
+            try:
+                item["request"] = json.loads(raw_request)
+            except json.JSONDecodeError:
+                item["request"] = None
+                item["request_raw"] = raw_request
+        else:
+            item["request"] = None
+        return item
+
+    def insert_raw_archive(self, row: Mapping[str, Any]) -> int:
+        cur = self.conn.execute(
+            """
+            INSERT INTO raw_archive(
+              kind, source, market_id, token_id, url, payload_json,
+              payload_hash, rules_hash, captured_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row["kind"],
+                row["source"],
+                row.get("market_id"),
+                row.get("token_id"),
+                row.get("url"),
+                json.dumps(row["payload"], sort_keys=True, default=str)
+                if not isinstance(row.get("payload_json"), str)
+                else row["payload_json"],
+                row["payload_hash"],
+                row.get("rules_hash"),
+                row["captured_at"],
+            ),
+        )
+        return int(cur.lastrowid)
+
+    def list_raw_archive(
+        self,
+        *,
+        market_id: str | None = None,
+        kind: str | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM raw_archive WHERE 1=1"
+        params: list[Any] = []
+        if market_id:
+            sql += " AND market_id = ?"
+            params.append(market_id)
+        if kind:
+            sql += " AND kind = ?"
+            params.append(kind)
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        return [dict(r) for r in self.conn.execute(sql, params).fetchall()]
+
+    def insert_paper_run(self, row: Mapping[str, Any]) -> int:
+        cur = self.conn.execute(
+            """
+            INSERT INTO paper_runs(
+              cycle_id, market_id, as_of, action, reason, details_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row["cycle_id"],
+                row.get("market_id"),
+                row.get("as_of"),
+                row["action"],
+                row["reason"],
+                json.dumps(row.get("details") or {}, sort_keys=True, default=str),
+                row["created_at"],
+            ),
+        )
+        return int(cur.lastrowid)
+
+    def list_paper_runs(
+        self, cycle_id: str | None = None, limit: int = 200
+    ) -> list[dict[str, Any]]:
+        if cycle_id:
+            rows = self.conn.execute(
+                """
+                SELECT * FROM paper_runs WHERE cycle_id = ?
+                ORDER BY id DESC LIMIT ?
+                """,
+                (cycle_id, limit),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM paper_runs ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
         out: list[dict[str, Any]] = []
         for row in rows:
             item = dict(row)
-            item["variants"] = json.loads(item.pop("variant_json") or "{}")
-            item["decision"] = json.loads(item.pop("decision_json") or "{}")
+            item["details"] = json.loads(item.pop("details_json") or "{}")
             out.append(item)
         return out
 
