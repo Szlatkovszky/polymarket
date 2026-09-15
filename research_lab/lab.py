@@ -27,8 +27,17 @@ from research_lab.fees import parse_market_fee_rate
 from research_lab.forecast import ForecastValidationError, ValidatedForecast, validate_forecast_dict
 from research_lab.hashing import rules_hash_from_text
 from research_lab.money import D, polymarket_taker_fee, q_cash, q_shares, round_fee_up
+from research_lab.research_budget import ResearchBudget
+from research_lab.specialist import (
+    WEATHER_MODEL_VERSION,
+    PlaceholderSpecialist,
+    ResearchRequest,
+    WeatherStationBaseline,
+)
 from research_lab.store import Store
 from research_lab.timeutil import Clock, SystemUTCClock, isoformat_utc, parse_utc
+from research_lab.weather_pipeline import run_weather_baseline
+from research_lab.weather_source import build_weather_source
 
 ALLOWED_PAYOFFS = (D("0"), D("0.5"), D("1"))
 
@@ -244,6 +253,8 @@ class Lab:
         gamma: Any,
         clob: Any,
         clock: Clock | None = None,
+        weather_specialist: WeatherStationBaseline | None = None,
+        research_budget: ResearchBudget | None = None,
     ) -> None:
         if mode not in ("PAPER", "DEMO"):
             raise LabError("mode must be PAPER or DEMO — live trading is not implemented")
@@ -255,6 +266,12 @@ class Lab:
         self.gamma = gamma
         self.clob = clob
         self.clock = clock or SystemUTCClock()
+        self.research_budget = research_budget or ResearchBudget.from_env()
+        self.placeholder_specialist = PlaceholderSpecialist()
+        self.weather_specialist = weather_specialist or WeatherStationBaseline(
+            build_weather_source(self.research_budget),
+            budget=self.research_budget,
+        )
         now = isoformat_utc(self.clock.now())
         self.store.init_account(
             cash=risk.starting_cash, risk_version=risk.version, now_iso=now
@@ -270,6 +287,8 @@ class Lab:
         gamma: Any,
         clob: Any,
         clock: Clock | None = None,
+        weather_specialist: WeatherStationBaseline | None = None,
+        research_budget: ResearchBudget | None = None,
     ) -> "Lab":
         path = Path(data_dir) / f"{mode.lower()}.sqlite"
         store = Store(path, mode)
@@ -280,6 +299,8 @@ class Lab:
             gamma=gamma,
             clob=clob,
             clock=clock,
+            weather_specialist=weather_specialist,
+            research_budget=research_budget,
         )
 
     def now(self) -> datetime:
@@ -399,6 +420,86 @@ class Lab:
     def authorize_model(self, model_version: str, notes: str = "") -> None:
         """Paper-use flag only — not a statistical qualification."""
         self.store.authorize_model(model_version, isoformat_utc(self.now()), notes)
+
+    def yes_market_mid(self, market_id: str, *, as_of: str) -> tuple[Decimal | None, str | None]:
+        """Contemporaneous YES mid from a book snapshot with captured_at <= as_of."""
+
+        market = self.store.get_market(market_id)
+        if market is None or not market.yes_token_id:
+            return None, None
+        as_of_dt = parse_utc(as_of)
+        row = self.store.latest_book(market.yes_token_id)
+        if row is None:
+            return None, None
+        captured = parse_utc(row["captured_at"])
+        if captured > as_of_dt:
+            return None, None
+        book = OrderBook.from_clob(json.loads(row["snapshot_json"]), token_id=market.yes_token_id)
+        if not book.bids or not book.asks:
+            return None, isoformat_utc(captured)
+        mid = (book.bids[0].price + book.asks[0].price) / D(2)
+        return mid, isoformat_utc(captured)
+
+    def weather_research_request(
+        self, market_id: str, *, as_of: str | None = None
+    ) -> ResearchRequest:
+        market = self.store.get_market(market_id)
+        if market is None:
+            raise LabError(f"unknown market {market_id}")
+        as_of_iso = isoformat_utc(parse_utc(as_of) if as_of else self.now())
+        mid, mid_at = self.yes_market_mid(market_id, as_of=as_of_iso)
+        hints: dict[str, Any] = {}
+        if mid is not None:
+            hints["market_mid"] = str(mid)
+            hints["market_mid_available_at"] = mid_at
+        return ResearchRequest(
+            market_id=market.market_id,
+            condition_id=market.condition_id,
+            rules_text=market.rules_text,
+            rules_hash=market.rules_hash,
+            as_of=as_of_iso,
+            cutoff_at=market.cutoff_at,
+            resolution_source=market.resolution_source,
+            specialist_hints=hints,
+        )
+
+    def weather_decision(
+        self,
+        market_id: str,
+        *,
+        as_of: str | None = None,
+        expires_hours: float = 3.0,
+    ) -> dict[str, Any]:
+        """Build a weather baseline envelope. Does not import or trade."""
+
+        request = self.weather_research_request(market_id, as_of=as_of)
+        decision = run_weather_baseline(
+            request,
+            specialist=self.weather_specialist,
+            expires_hours=expires_hours,
+        )
+        self.store.insert_research_estimate(
+            {
+                "market_id": request.market_id,
+                "rules_hash": request.rules_hash,
+                "as_of": request.as_of,
+                "model_version": str(decision.get("model_version") or WEATHER_MODEL_VERSION),
+                "calibration_version": str(decision.get("calibration_version") or ""),
+                "status": "ESTIMATE" if decision.get("action") == "PROPOSE" else "ABSTAIN",
+                "reason": str(decision.get("reason") or ""),
+                "variants": decision.get("variants") or {},
+                "decision": {
+                    "action": decision.get("action"),
+                    "reason": decision.get("reason"),
+                    "forecast_id": (decision.get("forecast") or {}).get("forecast_id"),
+                    "variants": decision.get("variants"),
+                },
+                "created_at": isoformat_utc(self.now()),
+            }
+        )
+        decision["logged"] = True
+        decision["yes_no_gap_tradeable"] = False
+        return decision
 
     def import_forecast(self, payload: Mapping[str, Any], *, decide: bool = True) -> DecisionRecord:
         forecast = validate_forecast_dict(payload)
@@ -876,6 +977,9 @@ class Lab:
                 "HU SZTFH block status uncertain → stay PAPER. No VPN. "
                 "Money pilot needs separate legal clearance."
             ),
+            "research_budget": self.research_budget.status(),
+            "weather_specialist": self.weather_specialist.name,
+            "weather_calibration": self.weather_specialist.calibration_version,
             "paused": bool(acc["paused"]),
             "cash": str(self.store.cash()),
             "equity": str(equity),

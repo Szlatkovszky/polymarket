@@ -1,0 +1,112 @@
+{
+  "provider": "nws-fixture-archive-v1",
+  "observation_lag_minutes": 20,
+  "caveats": [
+    "NWS observations may lag ~20 minutes; available_at = observed_at + lag.",
+    "Missing max/min fields are null, never 0.",
+    "Incomplete observation series must not be treated as an official daily max.",
+    "This archive is a research fixture, not live NWS and not a P&L claim."
+  ],
+  "stations": {
+    "KMIA": {
+      "timezone": "America/New_York",
+      "forecasts": [
+        {
+          "issued_at": "2026-09-15T10:00:00+00:00",
+          "available_at": "2026-09-15T10:00:00+00:00",
+          "model_run": "gfs-2026-09-15T06:00:00Z",
+          "valid_date_local": "2026-09-16",
+          "predicted_max_c": 33.2,
+          "horizon_hours": 18,
+          "url": "https://api.weather.gov/stations/KMIA/forecasts/gfs-2026-09-15T06:00:00Z"
+        },
+        {
+          "issued_at": "2026-09-15T12:30:00+00:00",
+          "available_at": "2026-09-15T12:30:00+00:00",
+          "model_run": "gfs-2026-09-15T12:00:00Z",
+          "valid_date_local": "2026-09-16",
+          "predicted_max_c": 31.0,
+          "horizon_hours": 12,
+          "url": "https://api.weather.gov/stations/KMIA/forecasts/gfs-2026-09-15T12:00:00Z"
+        }
+      ],
+      "observations": [
+        {
+          "id": "kmia-2026-09-15T11:00Z",
+          "observed_at": "2026-09-15T11:00:00+00:00",
+          "temperature_c": 29.4,
+          "daily_max_c": null,
+          "daily_min_c": null,
+          "max_min_fields_present": false,
+          "series_complete_for_local_date": false,
+          "url": "https://api.weather.gov/stations/KMIA/observations/kmia-2026-09-15T11:00Z"
+        },
+        {
+          "id": "kmia-2026-09-15T11:50Z",
+          "observed_at": "2026-09-15T11:50:00+00:00",
+          "temperature_c": 30.1,
+          "daily_max_c": null,
+          "daily_min_c": null,
+          "max_min_fields_present": false,
+          "series_complete_for_local_date": false,
+          "url": "https://api.weather.gov/stations/KMIA/observations/kmia-2026-09-15T11:50Z"
+        },
+        {
+          "id": "kmia-2026-09-16T04:00Z",
+          "observed_at": "2026-09-16T04:00:00+00:00",
+          "temperature_c": 27.0,
+          "daily_max_c": null,
+          "daily_min_c": null,
+          "max_min_fields_present": false,
+          "series_complete_for_local_date": false,
+          "url": "https://api.weather.gov/stations/KMIA/observations/kmia-2026-09-16T04:00Z"
+        }
+      ]
+    },
+    "KABC": {
+      "timezone": "America/New_York",
+      "forecasts": [
+        {
+          "issued_at": "2026-09-15T09:00:00+00:00",
+          "available_at": "2026-09-15T09:00:00+00:00",
+          "model_run": "nam-2026-09-15T06:00:00Z",
+          "valid_date_local": "2026-09-16",
+          "predicted_max_c": null,
+          "horizon_hours": 24,
+          "url": "https://api.weather.gov/stations/KABC/forecasts/nam-2026-09-15T06:00:00Z"
+        }
+      ],
+      "observations": [
+        {
+          "id": "kabc-incomplete",
+          "observed_at": "2026-09-15T10:00:00+00:00",
+          "temperature_c": 22.0,
+          "daily_max_c": null,
+          "daily_min_c": null,
+          "max_min_fields_present": false,
+          "series_complete_for_local_date": false,
+          "url": "https://api.weather.gov/stations/KABC/observations/kabc-incomplete"
+        }
+      ]
+    }
+  },
+  "error_sigma_c": {
+    "KMIA": {
+      "0-24": 1.4,
+      "24-48": 1.9,
+      "48-72": 2.3
+    }
+  },
+  "unmeasured_prior_sigma_c": 2.0,
+  "climatology": {
+    "KMIA": {
+      "09": {
+        "ge_32.0c": {
+          "p_yes": 0.42,
+          "sample_n": 30,
+          "note": "fixture prior only; not a climate claim"
+        }
+      }
+    }
+  }
+}

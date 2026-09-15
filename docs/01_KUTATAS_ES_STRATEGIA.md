@@ -14,7 +14,7 @@ A kutatási réteg soha nem választ tétméretet, nem emel limiteket, és nem k
 
 | Rank | Branch | Status in this repo |
 |---|---|---|
-| **A (primary)** | Specialist **fair value** | Paper executor path. First study set: **station-and-date weather** markets. Alternative: strictly specified, pre-scheduled **economic releases**. **Not** a general “Grok predicts everything” bot. |
+| **A (primary)** | Specialist **fair value** | Paper executor path + **weather station/date baseline** (Normal error, identity calibration stub). First study set: station-and-date weather. Alternative: strictly specified, pre-scheduled **economic releases** (not built). **Not** a general “Grok predicts everything” bot. **Not** a proven edge. |
 | **B (secondary)** | Formal basket / relative value | Research only. A YES+NO apparent gap is **diagnostic** and **never auto-traded**. No basket executor. |
 | **C (later)** | Selective market making | Out of scope. Needs quote/queue/latency/inventory modules first. |
 
@@ -132,12 +132,38 @@ is a risk note, not a license.
 A single optimized score must not hide losses. One-shot test set. Human-only
 promotion. Champion vs challenger: the LLM does not edit the risk engine.
 
+## Strategy A first slice (landed, unproven)
+
+Code: `research_lab/specialist.py` (`WeatherStationBaseline`),
+`research_lab/weather_source.py` (NWS-shaped fixture adapter),
+`research_lab/weather_math.py` (interval `F(b)-F(a)` + rounding hooks).
+
+- Target is station + local date + contract rounding, parsed from verified
+  `rules_text` / `rules_hash`. Vague city weather is rejected.
+- Starting likelihood is Normal around the forecasted daily max with a
+  horizon/station sigma table when present, else an explicit unmeasured prior.
+  **Limitations:** thin tails vs extremes; no regime-shift model; forecast-grid
+  temperature is not the official daily max.
+- Calibration hook exists (`identity-stub-v0`); raw and calibrated tracks are
+  both logged even when they are equal.
+- Historical base rate and contemporaneous YES mid are logged when available;
+  missing tracks stay unavailable (not 0).
+- Non-NWS resolution source → **ABSTAIN** (no silent NWS substitution).
+- Missing official max/min fields stay null; incomplete series is never treated
+  as official daily max.
+- Grok remains unwired; optional critique must not override `p_yes`.
+- `risk-v2` remains the only stake/decision authority. YES+NO gap stays diagnostic.
+
+Still-unproven: any out-of-sample Brier/log-loss or cost-adjusted P&L advantage
+vs mid or vs the base rate. Next gate is **Kapu B** (forward paper data collection
+on a pre-registered cluster), not live trading.
+
 ## Explicit non-goals for this phase
 
 - Live order, wallet, redeem adapters
 - Basket executor or market-maker executor
-- Wired Grok API (interface + cost ceiling only)
-- Fitted specialist (placeholder ABSTAIN + calibration hooks)
+- Wired Grok API (interface + cost ceiling + critique stub only)
+- Fitted specialist (baseline exists; calibration is still an identity stub)
 - Any statement that the strategy is profitable
 - Martingale, wallet-copying, “98% lock” autos, treating many LLM personas as
   independent evidence
