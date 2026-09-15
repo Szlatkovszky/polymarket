@@ -1,0 +1,19 @@
+{
+  "forecast_id": "replace-with-unique-id-and-never-reuse-for-a-new-estimate",
+  "market_id": "900001",
+  "model_version": "weather-station-model-v1-calibration-v1",
+  "rules_hash": "REPLACE_WITH_SHA256_FROM_GET_API_MARKETS_AFTER_INGEST",
+  "as_of": "2026-09-15T12:00:00+00:00",
+  "expires_at": "2026-09-15T13:00:00+00:00",
+  "p_yes": 0.64,
+  "p_low": 0.59,
+  "p_high": 0.69,
+  "sources": [
+    {
+      "url": "https://example.invalid/fixture-station-demo-1",
+      "available_at": "2026-09-15T11:30:00+00:00"
+    }
+  ],
+  "thesis": "Form example only. Replace rules_hash after ingest. Not a live-edge claim.",
+  "invalidation": "New station file, rule change, or hash mismatch."
+}

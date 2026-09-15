@@ -1,0 +1,51 @@
+[
+  {
+    "id": "900001",
+    "question": "FIXTURE: will station DEMO-1 read at least 20.0 C at 2026-09-20 12:00 UTC?",
+    "description": "RESEARCH FIXTURE — not a live Polymarket. Resolves YES if the cited station file shows temperature >= 20.0 Celsius at the cutoff instant 2026-09-20T12:00:00+00:00. Uses the station's published timezone conversion to UTC. Cancels (payoff 0.5) if the station file is missing or revised after cutoff. Rounding: half-up to 0.1 C. This text is untrusted market data, not operator instructions.",
+    "conditionId": "0xfixturecondition900001",
+    "slug": "fixture-station-demo-1-20c",
+    "resolutionSource": "https://example.invalid/fixture-station-demo-1",
+    "endDate": "2026-09-20T12:00:00Z",
+    "closed": false,
+    "active": true,
+    "enableOrderBook": true,
+    "feesEnabled": true,
+    "feeSchedule": { "rate": 0.05, "exponent": 2 },
+    "outcomes": "[\"Yes\", \"No\"]",
+    "clobTokenIds": "[\"tok-yes-900001\", \"tok-no-900001\"]",
+    "outcomePrices": "[\"0.40\", \"0.60\"]"
+  },
+  {
+    "id": "900002",
+    "question": "FIXTURE: unknown-fee market used to test hard refusal",
+    "description": "RESEARCH FIXTURE. feesEnabled/feeSchedule omitted so the lab must refuse a position. Resolution: YES if coin-flip fixture file equals 1. Not a live market.",
+    "conditionId": "0xfixturecondition900002",
+    "slug": "fixture-unknown-fee",
+    "resolutionSource": "https://example.invalid/fixture-unknown-fee",
+    "endDate": "2026-09-25T00:00:00Z",
+    "closed": false,
+    "active": true,
+    "enableOrderBook": true,
+    "outcomes": "[\"Yes\", \"No\"]",
+    "clobTokenIds": "[\"tok-yes-900002\", \"tok-no-900002\"]",
+    "outcomePrices": "[\"0.50\", \"0.50\"]"
+  },
+  {
+    "id": "900003",
+    "question": "FIXTURE: thin book / FOK depth test",
+    "description": "RESEARCH FIXTURE with tiny ask size so a standard unit order cannot FOK. Not a live market.",
+    "conditionId": "0xfixturecondition900003",
+    "slug": "fixture-thin-book",
+    "resolutionSource": "https://example.invalid/fixture-thin-book",
+    "endDate": "2026-09-25T00:00:00Z",
+    "closed": false,
+    "active": true,
+    "enableOrderBook": true,
+    "feesEnabled": true,
+    "feeSchedule": { "rate": 0.05, "exponent": 2 },
+    "outcomes": "[\"Yes\", \"No\"]",
+    "clobTokenIds": "[\"tok-yes-900003\", \"tok-no-900003\"]",
+    "outcomePrices": "[\"0.48\", \"0.52\"]"
+  }
+]

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Polymarket Research Lab</title>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem; max-width: 52rem; color: #111; }
+    .banner { background: #111; color: #f5f5f4; padding: 1rem 1.2rem; border-radius: 8px; }
+    .warn { background: #fef3c7; padding: 0.8rem 1rem; border-radius: 8px; margin: 1rem 0; }
+    dl { display: grid; grid-template-columns: 12rem 1fr; gap: 0.35rem 1rem; }
+    a { color: #1d4ed8; }
+    code { background: #f4f4f5; padding: 0.1rem 0.3rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="banner">
+    <strong>{{MODE}} mode</strong> — simulation only. Live trading, wallets, and auto-promote are disabled.
+  </div>
+  <h1>Polymarket Research Lab</h1>
+  <p class="warn">
+    No edge is proven. Dashboard numbers are paper/demo accounting, not live P&amp;L
+    and not a reason to enable a CLOB adapter.
+  </p>
+  <dl>
+    <dt>Cash</dt><dd>{{CASH}}</dd>
+    <dt>Marked equity</dt><dd>{{EQUITY}}</dd>
+    <dt>Paused</dt><dd>{{PAUSED}}</dd>
+    <dt>Risk version</dt><dd>{{RISK}}</dd>
+    <dt>Valuation</dt><dd>{{VALUATION}}</dd>
+    <dt>Positions</dt><dd>{{POSITIONS}}</dd>
+    <dt>Decisions</dt><dd>{{DECISIONS}}</dd>
+  </dl>
+  <p>
+    JSON state: <a href="/api/state"><code>/api/state</code></a>
+    · PAPER CSV: <a href="/api/export.csv"><code>/api/export.csv</code></a>
+    · Evaluation stubs: <a href="/api/evaluation"><code>/api/evaluation</code></a>
+  </p>
+</body>
+</html>

@@ -1,0 +1,321 @@
+<!doctype html><html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Piackutatás és stratégiakeret</title><style>
+:root{--ink:#172538;--muted:#526477;--line:#d9e0e5;--paper:#fff;--accent:#236957}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#edf1f2;color:var(--ink);font:16px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.cover{background:#14232d;color:#eff8f4;padding:64px max(6vw,24px) 52px}.cover .eyebrow{font-size:11px;letter-spacing:3px;color:#a7d5c5}.cover h1{font-size:clamp(32px,5vw,58px);line-height:1.1;max-width:1100px;margin:22px 0}.cover p{max-width:750px;color:#c5d1da}.facts{display:flex;gap:42px;flex-wrap:wrap;margin-top:32px;font-size:12px;color:#c5d1da}.facts strong{display:block;color:#d1f0e1;font-size:20px}.layout{display:grid;grid-template-columns:260px minmax(0,960px);gap:40px;max-width:1400px;margin:0 auto;padding:40px 30px 80px}nav{position:sticky;top:24px;align-self:start;max-height:92vh;overflow:auto;padding:8px 0}nav h3{font-size:11px;letter-spacing:1.5px;margin:0 0 15px;color:var(--muted)}nav a{display:block;font-size:12px;line-height:1.5;padding:7px 0;text-decoration:none;color:var(--muted)}nav a:hover{color:var(--accent)}article{background:var(--paper);padding:48px 54px;border:1px solid var(--line);border-radius:4px;min-width:0}article>h1{font-size:14px;letter-spacing:2px;color:var(--accent);margin-top:0}h2{font-size:25px;line-height:1.35;margin:48px 0 20px;padding-top:16px;border-top:1px solid var(--line);scroll-margin-top:20px}h3{font-size:19px;line-height:1.4;margin:28px 0 15px}p{margin:0 0 17px}a{color:#226451;overflow-wrap:anywhere}blockquote{margin:24px 0;padding:20px 24px;background:#eff6f2;border-left:3px solid var(--accent);font-size:15px}blockquote p:last-child{margin-bottom:0}table{width:100%;border-collapse:collapse;font-size:12px;line-height:1.5;margin:24px 0}th{background:#eaf0ef;text-align:left}th,td{padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top}td:first-child{font-weight:600}code{background:#edf1f4;border-radius:4px;padding:2px 4px;font:12px/1.6 ui-monospace,monospace;overflow-wrap:anywhere}pre{background:#14232d;color:#edf6f2;padding:20px;border-radius:6px;overflow:auto;font-size:12px}pre code{background:transparent;padding:0;color:inherit}ul,ol{padding-left:23px}li{margin:8px 0}hr{border:0;border-top:1px solid var(--line);margin:32px 0}.end{font-size:11px;color:var(--muted);border-top:1px solid var(--line);padding-top:18px;margin-top:32px}.print{position:fixed;bottom:24px;right:24px;border:0;border-radius:7px;padding:12px 18px;background:#236957;color:white;cursor:pointer;font-weight:600;box-shadow:0 5px 25px #0002}@media(max-width:1000px){.layout{display:block;padding:24px 15px}nav{position:static;max-height:none;padding:10px 12px 28px}nav a{display:inline-block;margin-right:18px}article{padding:28px 24px}.cover{padding:42px 25px}}@media print{body{background:#fff;font-size:11pt}.cover{background:#fff;color:#172538;padding:20px 0}.cover p,.cover .eyebrow,.facts,.facts strong{color:#172538}.cover h1{font-size:30pt}.layout{display:block;padding:0}.layout nav,.print{display:none}article{border:0;padding:0}h2{page-break-after:avoid}table{font-size:9pt}tr,blockquote{break-inside:avoid}.end{font-size:9pt}@page{margin:18mm}}
+</style></head><body><header class="cover"><div class="eyebrow">POLYMARKET / RESEARCH BEFORE RISK</div><h1>Piackutatás és stratégiakeret</h1><p>Piaci mechanika, három kutatási irány, gazdaságosság, kockázati limitek és a bizonyítható előny felépítése.</p><div class="facts"><div><strong>2026. 09. 15.</strong>Kutatási dátum</div><div><strong>PAPER ONLY</strong>A prototípus végrehajtási módja</div><div><strong>Nincs igazolt profit</strong>A bizonyítékot külön kell felépíteni</div></div></header><div class="layout"><nav><h3>TARTALOM</h3><a href="#section-1">Piackutatás, stratégiák és egy nyereségorientált rendszer terve</a><a href="#section-2">1. Vezetői döntés: miből lehet előny?</a><a href="#section-3">2. Kutatási módszer és az állítások bizonyítékszintje</a><a href="#section-4">3. Piacszerkezet és verseny: mit mutatnak az adatok?</a><a href="#section-5">4. A költségmodell: itt bukik el sok látszólag jó ötlet</a><a href="#section-6">5. Stratégia A: specialist fair value — elsődleges kutatási irány</a><a href="#section-7">6. Stratégia B: logikai relatívérték és kosár-arbitrázs</a><a href="#section-8">7. Stratégia C: szelektív market making — csak később</a><a href="#section-9">8. Mivel nem kezdenék?</a><a href="#section-10">9. Kockázat és tőke: induló kutatási paraméterek</a><a href="#section-11">10. Gazdaságosság és kapacitás</a><a href="#section-12">11. Iteratív fejlesztés: hogyan tanuljon, és mit ne tehessen?</a><a href="#section-13">12. Jogi és technikai indulási feltételek</a><a href="#section-14">13. A bot felépítése</a><a href="#section-15">14. Dashboard: mit kell látnod?</a><a href="#section-16">15. Megvalósítási sorrend és üzleti stop-feltételek</a><a href="#section-17">Forrásjegyzék</a></nav><article><h1>POLYMARKET / RESEARCH BEFORE RISK</h1>
+<h2 id="section-1">Piackutatás, stratégiák és egy nyereségorientált rendszer terve</h2>
+<p><strong>Kutatási állapot: 2026. szeptember 15. · Változat: 1.0</strong></p>
+<blockquote>
+<p><strong>Döntési javaslat:</strong> először egy szűk, mérhető eseménykörre épített fair-value modell legyen a kutatási főirány. A logikai relatívérték/arbitrázs külön kutatási ág; a market making csak későbbi, infrastruktúra-igényes kiegészítés. Nem általános „Grok megjósol mindent” botot érdemes finanszírozni.</p>
+<p><strong>Amit ez az anyag nem állít:</strong> nincs igazolt, élő pénzes profitunk, nincs saját, lezárt független backtestünk, nincs garantált havi hozam. A mellékelt program tesztelt kutatási prototípus és szimulált főkönyv; nem pénzes kereskedőrendszer. A DEMO minden kötése és eredménye szintetikus.</p>
+</blockquote>
+<h2 id="section-2">1. Vezetői döntés: miből lehet előny?</h2>
+<p>A bevételi cél helyes, de a célfüggvényt pontosítani kell: <strong>minden releváns költség után pozitív várható eredmény, kezelhető veszteség és ténylegesen köthető kapacitás</strong>. A 80%-os találati arány, a sok kötés, a látványos AI-indoklás vagy az egyetlen szerencsés hónap nem elég.</p>
+<p>Egy stratégia értéke négy külön tényezőből áll: információs előny, az előny megbízható mérése, végrehajthatóság és az előnyön köthető összeg. Egy 8%-os eltérés tíz dollárnyi mélységgel kevésbé értékes lehet, mint egy 1%-os eltérés nagyobb és stabilabb kapacitással. Fordítva: nagy forgalmú piacra nem érdemes csak azért belépni, mert ott könnyű kötni; az informált versenytársakat is le kell győzni.</p>
+<p>A Grok megfelelő szerepe az adatértelmezés, a piaci szabályok strukturálása, a források összevetése és a tesztelendő hipotézisek előállítása. Az LLM saját magabiztossága nem kalibrált valószínűség. A modell nem kap tárcakulcsot, pénzkivételi jogosultságot vagy szabad kezet a kockázati limitek módosítására.</p>
+<h2 id="section-3">2. Kutatási módszer és az állítások bizonyítékszintje</h2>
+<p>Az anyag a jelenlegi hivatalos Polymarket- és xAI-dokumentációra, predikciós piaci mikroszerkezeti kutatásokra, az ESMA 2026. szeptemberi kiadványára és a magyar blokkolásról megjelent tudósításokra épül. A bibliográfia minden hivatkozást tartalmaz. A díjak és interfészek pillanatfelvétele nem helyettesíti a kötéskor végzett ellenőrzést.</p>
+<p><strong>Ellenőrzött külső tény</strong> például a dokumentált díjképlet vagy egy tanulmányban közölt mintaméret. <strong>Tervezési döntés</strong> a javasolt 0,5%-os kötési limit. <strong>Munkahipotézis</strong> az, hogy egy állomásszinten kalibrált időjárási modell jövedelmező lehet. <strong>Nem igazolt eredmény</strong> a saját nettó profit: ilyen állítást az anyag nem tesz.</p>
+<p>Nem készült teljes, szeptember 15-i piaci állományfelmérés, saját, többhavi ajánlatikönyv-adatbázis vagy általánosítható hozambecslés. A nyilvános végpontok dokumentációját ellenőriztem; a mellékelt Python-gyűjtő külső hálózati integrációját ebben a futtatókörnyezetben DNS-korlátozás miatt nem sikerült végigtesztelni. A helyi logika és a felület teszteléséről külön jegyzőkönyv van.</p>
+<h2 id="section-4">3. Piacszerkezet és verseny: mit mutatnak az adatok?</h2>
+<p>Saguillo és szerzőtársai a 2024. április–2025. április közötti történeti mintában nagyjából 40 millió dollárnyi kinyert arbitrázsprofitot becsülnek. Ez bizonyíték arra, hogy eltérések léteztek és egyes szereplők ki is használták őket. Nem mutatja meg egy új bot várható hozamát, és nem ad jelenlegi, tetszőleges tőkére skálázható lehetőséget. A tanulmány tranzakciós megfigyelései és becslési eljárásai nem azonosak azzal, hogy mi ma ugyanazt az árat elérjük. [S5]</p>
+<p>Egy NBA-piacokat vizsgáló 2026-os kutatás több mint 75 millió könyvpillanatot és 173 mérkőzést elemez. Mindössze hét végrehajtható egy-piaci, játék közbeni epizódot talál, 3,6 másodperces medián élettartammal. A kombinatorikus esetek nagy részét nagyon alacsony köthető mennyiség korlátozza. <strong>Következtetésünk:</strong> a lassú hírolvasó LLM nem a megfelelő végrehajtó egy másodperces versenyben. [S6]</p>
+<p>Egy 2026. augusztusi tanulmány szűkebb, mechanizmushoz köthető módszertannal mintegy 1,12 millió dollárnyi arbitrázst számszerűsít. Külön figyelmeztet arra, hogy ugyanazon bináris feltétel két könyvnézetének időbeli eltérése látszólagos arbitrázst hozhat létre. A 40 millió és az 1,12 millió <strong>nem összeadható és nem közvetlenül összevethető</strong>: eltér a vizsgált mechanizmus, az időablak és a becslés. [S7]</p>
+<h3>Versenytárstérkép — üzleti következtetés, nem szereplőszintű audit</h3>
+<table>
+<thead>
+<tr>
+  <th>Szereplőcsoport</th>
+  <th>Valószínű erősség</th>
+  <th>Miért nehéz ellenük?</th>
+  <th>Saját válasz</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Gyors arbitrázsbotok</td>
+  <td>Árfolyamfigyelés, mechanikus konverzió</td>
+  <td>Rövid élettartam, késleltetés, kevés mélység</td>
+  <td>Ne LLM-latenciára épüljön a belépés</td>
+</tr>
+<tr>
+  <td>Professzionális árjegyzők</td>
+  <td>Készletkezelés, sorpozíció, folyamatos jelenlét</td>
+  <td>A „spread” nem tiszta profit</td>
+  <td>Csak külön fill- és adverse-selection modell után</td>
+</tr>
+<tr>
+  <td>Témaspecialisták</td>
+  <td>Eseményspecifikus modell vagy jobb adat</td>
+  <td>Egy általános nyelvi modellnél mélyebb tudás</td>
+  <td>Egy szűk, ismétlődő területet kell választani</td>
+</tr>
+<tr>
+  <td>Hírekre és narratívákra reagálók</td>
+  <td>Gyors emberi/algoritmikus reakció</td>
+  <td>Nehéz megkülönböztetni az új információt a zajtól</td>
+  <td>Csak ellenőrzött forrás és mérhető tézis</td>
+</tr>
+<tr>
+  <td>Jutalomra optimalizálók</td>
+  <td>Likviditási ösztönzők</td>
+  <td>A program és a verseny változhat</td>
+  <td>Jutalom nélküli P&amp;L-t is külön mérni</td>
+</tr>
+</tbody>
+</table>
+<p>A stratégia kiválasztásakor a kapacitást ugyanúgy tesztelni kell, mint a pontosságot. A piaci volumen nem azonos a ma, egy meghatározott árhatáron elérhető könyvmélységgel.</p>
+<h2 id="section-5">4. A költségmodell: itt bukik el sok látszólag jó ötlet</h2>
+<p>A jelenlegi dokumentált taker-díj: <code>darabszám × díjráta × ár × (1 − ár)</code>. Maker oldalon a dokumentáció nulla kötési díjat ír. Száz darab 0,50-es árú kontraktusnál a következő belépési költségekkel számolhatunk, az aktuális piaci metaadat megerősítése mellett. [S1]</p>
+<table>
+<thead>
+<tr>
+  <th>Kategória</th>
+  <th style="text-align:right">Ráta</th>
+  <th style="text-align:right">Díj 100 darabnál</th>
+  <th style="text-align:right">Díj az 50 dolláros vételértékhez képest</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Kripto</td>
+  <td style="text-align:right">0,07</td>
+  <td style="text-align:right">1,75 USD</td>
+  <td style="text-align:right">3,5%</td>
+</tr>
+<tr>
+  <td>Sport; időjárás; gazdasági mutatók</td>
+  <td style="text-align:right">0,05</td>
+  <td style="text-align:right">1,25 USD</td>
+  <td style="text-align:right">2,5%</td>
+</tr>
+<tr>
+  <td>Pénzügy; politika; tech; mentions</td>
+  <td style="text-align:right">0,04</td>
+  <td style="text-align:right">1,00 USD</td>
+  <td style="text-align:right">2,0%</td>
+</tr>
+<tr>
+  <td>Geopolitika</td>
+  <td style="text-align:right">0</td>
+  <td style="text-align:right">0 USD</td>
+  <td style="text-align:right">0%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>A nulla díj nem nulla kockázat.</strong> A politikai és geopolitikai szabályértelmezési, időzítési vagy információs kockázatot nem oldja meg az olcsó belépés. A 0,07 ráta pedig nem egyszerűen „7% a befizetésre”: a fenti képletet kell alkalmazni.</p>
+<p>A bot a <code>feesEnabled</code> és <code>feeSchedule</code> mezőkből olvassa a díjat, nem egy beégetett kategóriatáblából. Ismeretlen mező vagy nem támogatott exponens esetén nem köt. A könyvből számított mennyiségi átlagárat használja; a felületen látott valószínűség vagy középár nem vételi ajánlat. [S2][S3]</p>
+<h3>Teljes gazdasági költség</h3>
+<p>A belépési döntésben szerepeljen a könyv tényleges vételi oldala, a taker-díj, az árromlás tartaléka, az üzemeltetési költség előzetes allokációja és szükség esetén a kilépés költsége. A már megfizetett belépési díjat kiszállási döntésnél nem szabad újra jövőbeli költségként számolni. A fix API-, szerver-, adat- és számviteli költségek a főkönyvben külön tételek.</p>
+<p>A kód kezdő költségtartaléka 0,002 USD/darab, plusz 0,002 USD/darab árromlás. Ezek <strong>nem megfigyelt saját költségek</strong>, hanem módosítandó kutatási feltételezések. Ha a havi költség 100 dollár és havi 5 000 darab kontraktust kötünk, a fix költség önmagában 0,02 dollár/darab: a kezdő tartalék tízszerese. A kis tőke vagy kis forgalom nagyon könnyen gazdaságtalanná teszi a rendszert.</p>
+<h2 id="section-6">5. Stratégia A: specialist fair value — elsődleges kutatási irány</h2>
+<h3>5.1. A hipotézis</h3>
+<p>Egy szűk, ismétlődő eseménycsaládban a forrásadatokra, bázisrátákra és kalibrációra épülő modell néha pontosabb becslést adhat az elszámolási kimenetelre, mint a köthető piaci ár. A hipotézist eseményenként, költségek után kell bizonyítani. Nem az a tézis, hogy a Grok általánosan okosabb a piacnál.</p>
+<p>Első vizsgálati jelölt: pontos állomáshoz és dátumhoz kötött időjárási piacok. Alternatíva: szigorúan meghatározott, előre időzített gazdasági adatközlések. A választás oka a megismételhetőség és az utólag ellenőrizhető célváltozó, <strong>nem bizonyított aktuális nyereségesség</strong>. Csak akkor maradnak a listán, ha jogilag hozzáférhetők, kellő mélységük van és a szabályuk géppel egyértelműen kezelhető.</p>
+<h3>5.2. Konkrét időjárási kutatási recept</h3>
+<p>A célváltozó ne „milyen idő lesz a városban?” legyen, hanem például egy meghatározott állomáson, helyi idő szerinti napon, a szerződésben előírt forrás szerint mért és kerekített maximum. A forecast-modellnek ugyanarra a mennyiségre kell vonatkoznia, mint az elszámolásnak. Egy másik állomás vagy más időzóna könnyen hibás címkéket eredményez.</p>
+<p>A pipeline archiválja az előrejelzés kibocsátási idejét, az akkor elérhető modellfutást, a korábbi előrejelzési hibákat, a célállomást és a már ismert megfigyeléseket. A NWS hivatalos API-ja megfigyeléseket és előrejelzéseket szolgáltat; a forrás azonban csak akkor egyezik az elszámolással, ha a szerződés valóban ezt használja. A NWS-adat automatikus helyettesítése egy másik elszámolási szolgáltató adatával nem elfogadható. [S20]</p>
+<p><strong>Adatminőségi kapu:</strong> a NWS dokumentációja akár 20 perces megfigyelési késést és egyes állomások 24 órás maximum/minimum mezőinek hiányát is jelzi. Hiányzó értéket nem szabad nullának venni; hiányos megfigyeléssorból számított maximumot pedig nem szabad automatikusan hivatalos napi maximumnak tekinteni. Emiatt ez nem „azonnali időjárási adatból biztos profit” stratégia. [S20]</p>
+<p>Példamodell: az előrejelzett napi maximum köré illesztett, előrejelzési horizont és állomás szerint kalibrált hibamegoszlás. Egy <code>a ≤ T &lt; b</code> intervallum becsült esélye <code>F(b) − F(a)</code>, a tényleges kerekítési és határszabályok szerinti korrekcióval. A normáleloszlás legfeljebb induló baseline: szélsőértékeknél és időjárási rezsimváltásnál külön hibateszt kell.</p>
+<p>Kötelező összehasonlítás: nyers modell, kalibrált modell, historikus bázisráta és az ugyanakkori piaci középár. Nem elég utólag a legjobb állomást vagy a legjobb hónapot kiválasztani. A modellek és a piacelőválogatás minden változatát naplózni kell.</p>
+<h3>5.3. Gazdasági adatközlési alternatíva</h3>
+<p>A célváltozó a szerződésben előírt közlés: első publikáció vagy későbbi revízió, szezonálisan igazított vagy nyers adat, év/év vagy hó/hó érték. A bot tárolja az adatvintage-ot. Olyan backtest, amely a mai, utólag revideált adatsort használja egy korábbi döntéshez, nem érvényes. Az első változat nem próbál a közlés másodpercében gyorsasági előnyt szerezni; korábban felépített, modellalapú eltéréseket tesztel.</p>
+<h3>5.4. Belépési képlet</h3>
+<p>Legyen <code>p</code> a YES kifizetésének becsült valószínűsége, <code>p_L</code> a konzervatív alsó becslés, <code>c</code> az egy darabra jutó teljes tervezett költség. YES esetén <code>edge = p_L − c</code>. NO esetén a YES-becslés felső szélét kell használni: <code>edge_NO = (1 − p_H) − c_NO</code>. A bot a két oldal közül a jobb, minden kapun átmenő jelöltet választja; nem köt mindkettőre pusztán eltérő szöveges indoklással.</p>
+<p><strong>Számítási példa, nem valódi ajánlat:</strong> <code>p=0,64</code>, <code>p_L=0,59</code>, köthető ask <code>0,54</code>, díjráta <code>0,05</code>. A díj egy darabra <code>0,01242</code>; árromlási tartalék <code>0,002</code>; költségallokáció <code>0,002</code>. Így <code>c=0,55642</code>, és a konzervatív nettó előny <code>0,03358 USD/darab</code>, azaz 3,358 százalékpont a kifizetés skáláján. Ez meghaladja a kezdő 3 százalékpontos küszöböt, <strong>ha a p_L valóban indokolható és a könyv még köthető</strong>.</p>
+<p>A <code>p_L</code> a prototípusban konzervatív forgatókönyv, nem automatikusan 95%-os statisztikai konfidenciahatár. Legalább 5 százalékpontos hibalevonás működik, de ezt később külső kalibrációból kell meghatározni. A történeti modellhiba, az adathiba és a szabálybizonytalanság külön problémák; egy tetszőleges levonás nem oldja meg mindet.</p>
+<h3>5.5. Kilépés és érvénytelenítés</h3>
+<p>A kutatási alapváltozat lejáratig tartást modellez, rövid időtávval. Korábbi zárást csak új, ellenőrzött információ, megváltozott szabály, felborult modellfeltevés vagy kockázatcsökkentési szükség indokol. A tartás jövőbeli várható kifizetését az <strong>aktuális, díj utáni eladási bevétellel</strong> kell összehasonlítani. A korábbi vételár önmagában nem ok a tartásra vagy eladásra.</p>
+<p>A mellékelt programban a szimulált eladás és a forrással ellátott kézi elszámolás működik. Automatikus hitelesített elszámolásfigyelő, összetett kiszállási politika és pénzes redeem nincs implementálva. Ezeket az élesítési specifikáció külön kezeli.</p>
+<h2 id="section-7">6. Stratégia B: logikai relatívérték és kosár-arbitrázs</h2>
+<p>A stratégia alapja nem a modell megérzése, hanem a szerződések közötti formális összefüggés. Például ha A bekövetkezése B-t feltétlenül maga után vonja, az <code>A: NO + B: YES</code> kosár minden megengedett kimenetelben legalább egy egységet fizethet. Ehhez azonban a forrásnak, időhatárnak, kivételeknek és elszámolási logikának is illeszkednie kell.</p>
+<table>
+<thead>
+<tr>
+  <th>Megengedett állapot</th>
+  <th style="text-align:right">NO(A)</th>
+  <th style="text-align:right">YES(B)</th>
+  <th style="text-align:right">Összes kifizetés</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>A hamis, B hamis</td>
+  <td style="text-align:right">1</td>
+  <td style="text-align:right">0</td>
+  <td style="text-align:right">1</td>
+</tr>
+<tr>
+  <td>A hamis, B igaz</td>
+  <td style="text-align:right">1</td>
+  <td style="text-align:right">1</td>
+  <td style="text-align:right">2</td>
+</tr>
+<tr>
+  <td>A igaz, B igaz</td>
+  <td style="text-align:right">0</td>
+  <td style="text-align:right">1</td>
+  <td style="text-align:right">1</td>
+</tr>
+</tbody>
+</table>
+<p>Ha egy valóban teljes és hibátlan állapottábla minimuma 1, a kosár teljes megszerzési költsége pedig 0,97, a lejáratkori elméleti többlet 0,03. <strong>Ez még nem élő arbitrázsprofit:</strong> előbb mindkét lábat ténylegesen meg kell szerezni; a szabály-, elszámolási és tőkelekötési kockázat is megmarad. Érvénytelenítés vagy fél kifizetés lehetőségét külön állapotként kell hozzáadni.</p>
+<p>A Polymarket batch-megbízásai külön értékelődnek: a két láb egy kérésben való beküldése nem minden-vagy-semmi portfólió-végrehajtás. A FOK az adott megbízás teljességére vonatkozik, nem a teljes stratégiakosárra. A kihagyott második láb költségére előzetes stresszteszt és pozíciólimit kell. [S8][S9]</p>
+<p>NegRisk eseményeknél létezik dokumentált NO→más kimenetelek YES konverzió, de ebből nem következik minden elképzelt fordított konverzió támogatottsága. Az „Other” és a később definiálható placeholder kimenetelek az első változatból kimaradnak. [S10]</p>
+<p>A saját prototípus YES+NO ellenőrzője ezért <strong>csak adatminőségi diagnosztika</strong>. Pozitív látszólagos résnél sem enged kötést. A nagyobb kosarak automatikus végrehajtása későbbi fejlesztés; mechanikai bizonyítás és integrációs teszt nélkül nem szabad pénzt engedni rá.</p>
+<h2 id="section-8">7. Stratégia C: szelektív market making — csak később</h2>
+<p>Az árjegyző haszna nem egyszerűen a megvett és kiírt ár különbsége. A mérendő eredmény: realizált spread mínusz kedvezőtlen szelekció, készletveszteség, fedezési és kilépési költség, plusz a ténylegesen jóváírt jutalom, mínusz üzemeltetés. Egy passzív vételt gyakran éppen akkor teljesítenek, amikor az informált eladó már tud valamit.</p>
+<p>Az első vizsgálatban legyen post-only belépés, rövid quote-élettartam, készlet szerinti áreltolás, eseményablak előtti quote-visszavonás és nettó, valamint bruttó készletlimit. Sorpozíció nélkül a „piac megérintette az árunkat, tehát teljesültünk” szabály optimista és érvénytelen backtestet adhat. Shortolási vagy konverziós képességet nem szabad feltételezni a szükséges tokenkészlet nélkül.</p>
+<p>A heartbeat hiánya a dokumentáció szerint nyitott ajánlatok törléséhez vezethet, de a már megvett pozíciókat nem zárja le. A jutalmak szabályait és a tényleges jóváírást külön kell kezelni. [S11][S12]</p>
+<p>Ez az ág nem része a mellékelt automatikus paper executor működésének. Bevezetése csak külön quote-, queue-, latency- és inventory-modul után javasolt.</p>
+<h2 id="section-9">8. Mivel nem kezdenék?</h2>
+<p>Nem alkalmaznék veszteség utáni tétduplázást, vak walletmásolást, „98%-os biztos események” automatikus vételét vagy több tucat azonos modellpersona szavazatát független bizonyítékként. Nem építenék nem nyilvános információra, piacmanipulációra vagy hozzáférési korlátozás megkerülésére. Nem választanék több hónapos, nehezen elszámolható eseményt pusztán azért, mert nagy az elméleti százalékos előny.</p>
+<p>A veszteséges stratégia több tőkével nem lesz jobb. A rosszul kalibrált modell több hírcikkel nem feltétlenül lesz pontosabb. A több kipróbált paraméterből kiválasztott legszebb görbe gyakran csak a kiválasztási folyamat eredménye.</p>
+<h2 id="section-10">9. Kockázat és tőke: induló kutatási paraméterek</h2>
+<p>A tényleges tőke, az elfogadható veszteség és a működési ország nem ismert. Az alábbiak <strong>konzervatív kutatási beállítások</strong>, nem személyre szabott ajánlás és nem veszteséggarancia. A program 10 000 szimulált dollárral indul; ez nem javasolt befizetés.</p>
+<table>
+<thead>
+<tr>
+  <th>Korlát</th>
+  <th style="text-align:right">Kezdő érték</th>
+  <th>Értelmezés</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Egy kötés teljes belépési költsége</td>
+  <td style="text-align:right">equity 0,5%-a</td>
+  <td>A teljes összeg elveszhet</td>
+</tr>
+<tr>
+  <td>Egy piac összesített költsége</td>
+  <td style="text-align:right">1%</td>
+  <td>A prototípus nem is növeli a már nyitott piacot</td>
+</tr>
+<tr>
+  <td>Egy szemantikai eseménycsoport</td>
+  <td style="text-align:right">2%</td>
+  <td>Azonos eseményhez kötődő több ticket együtt</td>
+</tr>
+<tr>
+  <td>Összes nyitott belépési költség</td>
+  <td style="text-align:right">10%</td>
+  <td>Nem nettósítjuk el a kényelmetlen bruttó kitettséget</td>
+</tr>
+<tr>
+  <td>Napi veszteség miatti stop</td>
+  <td style="text-align:right">1,5%</td>
+  <td>Új belépés letiltása</td>
+</tr>
+<tr>
+  <td>Csúcshoz mért visszaesési stop</td>
+  <td style="text-align:right">5%</td>
+  <td>Új belépés letiltása</td>
+</tr>
+<tr>
+  <td>Minimum konzervatív előny</td>
+  <td style="text-align:right">0,03 USD/darab</td>
+  <td>Díj, csúszási és költségtartalék után</td>
+</tr>
+<tr>
+  <td>Árintervallum</td>
+  <td style="text-align:right">0,10–0,90</td>
+  <td>A kezdő modell nem kezeli a szélső árakat</td>
+</tr>
+<tr>
+  <td>Maximum spread</td>
+  <td style="text-align:right">0,03</td>
+  <td>Abszolút árkülönbség</td>
+</tr>
+<tr>
+  <td>Részvétel elérhető mélységből</td>
+  <td style="text-align:right">20%</td>
+  <td>Nem kezeljük az egész könyvet saját likviditásnak</td>
+</tr>
+<tr>
+  <td>Friss könyv</td>
+  <td style="text-align:right">legfeljebb 5 másodperc</td>
+  <td>Mind a szerver-, mind a fogadási idő számít</td>
+</tr>
+<tr>
+  <td>Előrejelzés legnagyobb kora</td>
+  <td style="text-align:right">6 óra</td>
+  <td>Eseményfajtánként később szigorítandó</td>
+</tr>
+<tr>
+  <td>Tervezett elszámolási időtáv</td>
+  <td style="text-align:right">legfeljebb 14 nap</td>
+  <td>A finom cutoffot emberi review rögzíti</td>
+</tr>
+<tr>
+  <td>Napi maximum</td>
+  <td style="text-align:right">20 belépés</td>
+  <td>Nem termelési cél</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Fontos:</strong> 10% nyitott kitettség mellett egy közös eseménysokk több mint 5% veszteséget is okozhat. Az 5%-os stop nem garantált padló. Likviditáshiány, hirtelen átárazódás, elszámolási késés vagy technikai hiba miatt a végső veszteség meghaladhatja.</p>
+<p>Bináris, lejáratig tartott, egységnyi kifizetésű kontraktusnál a teljes all-in költségre értelmezett Kelly-frakció <code>f=(p−c)/(1−c)</code>. A prototípus ennek negyedét használja, de az abszolút 0,5%-os kötési limit erősebb korlát lehet. Kelly csak a valószínűségbecslés és a kifizetési modell helyessége mellett értelmes; nem kezel automatikusan korrelált eseményeket vagy orákulumhibát.</p>
+<p>A platform-, okosszerződés-, letét-, stablecoin-, kulcskezelési és devizakockázat nem azonos a pozíciók maximális veszteségével. Ezekre a platformon tartott összes összeg korlátozásával és elkülönített működési tőkével is reagálni kell. A forintban értelmezett eredmény eltérhet a dollárban nyilvántartott eredménytől. Konkrét adókulcsot jogi/adózási vizsgálat nélkül nem állapítunk meg.</p>
+<h2 id="section-11">10. Gazdaságosság és kapacitás</h2>
+<p>Egyszerű tervezési összefüggés: <code>havi nettó üzleti eredmény = lezárt forgalom × realizálható átlagos nettó kötési előny − fix működési költség</code>. A forgalom és az előny becslés, nem szabad őket azért növelni, hogy szebb legyen a terv.</p>
+<p>Ha a változó költségek után 0,5% előny realizálható, és a havi fix költség 100 dollár, <strong>20 000 dollárnyi lezárt forgalom kell csak a fix költség fedezésére</strong>. Egy 1 000 dolláros számlán ez húszszoros havi forgást jelentene; a javasolt kis kitettség és többnapos tartás mellett ezt nem szabad magától értetődőnek tekinteni.</p>
+<p>A pilot költségvetése ezért először költségplafon legyen, ne hozamígéret. Az LLM csak megváltozott információt dolgozzon fel; a változatlan szabályt és forrást cache-elni kell. A quote-frissítés determinisztikus feladat, nem indok újabb LLM-hívásra. Havi API- és adatköltési plafon, napi híváskeret és kutatásonkénti költségnapló szükséges.</p>
+<p>A jutalmakat, az egyszeri promóciókat és a nem realizált árnyereséget külön mutassuk. A stratégia „tiszta” eredményét jutalom nélkül is értékeljük; különben megszűnő ösztönzőre építünk vállalkozást.</p>
+<h2 id="section-12">11. Iteratív fejlesztés: hogyan tanuljon, és mit ne tehessen?</h2>
+<p>A rendszer nem saját magát korlátlanul módosító bot. Két elkülönített szerep van: a <strong>champion</strong>, amely az engedélyezett konfiguráció szerint működik, és a <strong>challenger</strong>, amely kutatási környezetben változtatásokat próbál. A kockázati motor, a kifizetési logika és a kulcskezelés nem az LLM szerkesztési területe.</p>
+<p>Egy heti kutatási körben rögzítsük, mi változott, miért várunk javulást, melyik mérőszám az elsődleges és mi alapján utasítjuk el a változatot. Egyszerre lehetőleg egy érdemi módosítást teszteljünk. Minden sikertelen változat is kap verziót; az eltüntetett veszteséges próbák hamis képet adnak.</p>
+<p>Az adatfelosztás legyen időrendi, eseménycsoportonként elkülönített és a címkék ismertté válása szerint tisztított. Egy adott időpontban még nem lezárt esemény eredménye nem használható tanításhoz. A train/test határt átlógó eseményeket purge/embargo szabály kezeli. Az azonos mérkőzés több piaca vagy ugyanazon gazdasági döntés több ticketje nem független minta.</p>
+<p>Külön AI-probléma: egy mai LLM a tanítóadataiból már ismerheti a történelmi esemény eredményét. A „csak a korabeli híreket mutattuk meg neki” nem feltétlenül védi ki ezt. Emiatt az LLM-re épülő végső bizonyíték fontos része az <strong>előre induló, időbélyegzett forward paper teszt</strong>.</p>
+<h3>Javasolt előléptetési kapu</h3>
+<p>Ne időtartam vagy találati arány alapján léptessünk élesbe. Kell pozitív nettó eredmény az érintetlen tesztmintán és a forward mintán; eseménycsoportos bizonytalansági sáv; stabilitás több időszakban; a valós és kétszeres költségszinten futtatott stressz; késleltetés- és mélységérzékenység; valamint annak bizonyítása, hogy egyetlen szerencsés esemény nem adja az eredmény döntő részét. A Brier/log-loss javulás hasznos, de pozitív kereskedési eredmény nélkül nem elég.</p>
+<p>Például 3 százalékpontnyi valódi átlagos előny kimutatásához, 0,5 körüli kifizetési szórással, egy durva független normálközelítés körülbelül <code>(1,96×0,5/0,03)^2 ≈ 1 067</code> megfigyelést ad. Ez szemléltető becslés, nem általános mintaméret-előírás. Klaszterezés, időbeli összefüggés, rezsimváltás és sok kipróbált modell ennél is nehezebbé teszi a bizonyítást. A „200 kötés után biztosan kész” állítás nem megalapozott.</p>
+<p>A mellékelt értékelő eseménycsoportos bootstrapot számol, de ez <strong>exploratív</strong>: nem helyettesít idősoros blokk-bootstrapot, többszörös tesztkorrekciót vagy teljes külső auditot. Automatikus pénzes előléptetést soha nem engedélyez.</p>
+<h2 id="section-13">12. Jogi és technikai indulási feltételek</h2>
+<ol start="2026">
+<li>január 19-i magyar sajtóbeszámolók szerint az SZTFH blokkolta a Polymarketet. A blokkolás megszűnését ebben a kutatásban nem sikerült hitelt érdemlően igazolni. Az aktuálisan elérhető hivatalos Polymarket geoblock-lista és egy magyar hatósági korlátozás eltérő kérdés; az előbbiben nem szereplő ország sem automatikusan jogszerű felhasználási hely. Magyarországi működés esetén pénzes indulás előtt jogi ellenőrzés szükséges. [S15][S16][S17]</li>
+</ol>
+<p>Az ESMA 2026. szeptember 10-i kockázati jelentése is vizsgálja a predikciós piacokat és a pénzügyi instrumentumként vagy szerencsejátékként való minősítés kérdéseit. A platform elérhetősége nem általános engedély. Az illetőség, a fizikai működési hely, a platform szerződéses feltételei és az adózási helyzet külön ellenőrzendők. [S18]</p>
+<p>A geoblock-végpont a kérelmező szerver kapcsolatáról ad információt, nem igazolja a tulajdonos jogosultságát. VPN, proxy vagy külföldi szerver használata nem szerepel megoldásként ebben a tervben. A most átadott kód egyébként sem tartalmaz pénzes végrehajtási útvonalat.</p>
+<p>A jelenlegi hivatalos Python SDK <code>polymarket-client</code>, és a dokumentáció pUSD elszámolási tokent ír le. Régi USDC.e- és SDK-példákat ezért nem szabad ellenőrzés nélkül másolni. Az éles adapternek verziórögzítés, cím-/hálózatellenőrzés, tokenpontosság-ellenőrzés és tényleges számlamozgás-egyeztetés kell. [S13][S14]</p>
+<h2 id="section-14">13. A bot felépítése</h2>
+<p><code>Nyilvános adatok → nyers archívum → szabályellenőrzés → kutatási modell/Grok → strukturált előrejelzés → determinisztikus kockázati kapuk → paper executor → főkönyv → dashboard → külön challenger kutatás</code>.</p>
+<p>A szabályellenőrzés a teljes szerződésleírás hashét rögzíti. A leírás megváltozása érvényteleníti az engedélyt. A modell piaconként YES-valószínűséget, alsó/felső forgatókönyvet, forrásokat, azok hozzáférhetőségi idejét, tézist és érvénytelenítési feltételt ad. A xAI dokumentált strukturált kimenete alkalmas sémához kötött válaszra; a JSON forma azonban önmagában nem igazolja a forrás valódiságát vagy a számítás helyességét. [S19]</p>
+<p>Az LLM eredménye után a rendszer újból áraz. Egy közben eltűnt ajánlatra nem szabad történeti áron belépni. A döntés és a papíron elköltött cash ugyanabban az adatbázis-tranzakcióban rögzül. Egy jelzésazonosító újraküldése nem eredményezhet dupla kötést.</p>
+<p>Az éles adapter további állapotgépet igényel: létrehozott, beküldött, visszaigazolt, részben teljesült, teljesült, visszavont, elutasított és ismeretlen állapot. Timeout után először egyeztetni kell, nem vakon újraküldeni. Újraindításkor a helyi nyilvántartásnak össze kell egyeznie a tőzsdei order-, trade-, token- és cash-állománnyal. Ez a production modul <strong>nem része a prototípusnak</strong>.</p>
+<h2 id="section-15">14. Dashboard: mit kell látnod?</h2>
+<p>A felület nyolc fő mutatót mutat: nettó eredmény, portfólióérték, lezárt eredmény, nyitott eredmény, maximum drawdown, szabad cash, rögzített üzemeltetési költség és a lezárt kötések/önálló események száma. A pozíciók, modellek és eseménycsoportok visszakereshetők; a CSV exportálható.</p>
+<p>A nyitott értékelés az eladási könyv mélységét és a kilépési díjat használja. Ha nincs elég friss, teljes mélység, az értékelés hiányosként jelenik meg, az új belépés tiltott, és a görbébe nem kerül megtévesztő nullás adatpont. Az összesített érték ilyenkor alsó becslés, nem ismert piaci egyenleg.</p>
+<p>A kutatási panelen a piaci baseline-hoz mért Brier-pontszám, log loss, klaszter-bootstrap intervallum és a pénzes indulás kapui szerepelnek. A dashboard nem mutat „sikeres stratégia” zöld jelzést pusztán néhány nyertes demókötés miatt. Az audit hash-lánca helyi integritásellenőrzés, nem külső hitelesítés.</p>
+<p>A DEMO offline megnyitható, minden adata szintetikus és rögzített. A PAPER szerver valódi nyilvános adatokat képes kérni, de továbbra is csak szimulált kötéseket ír. A két adatbázis nem keverhető, és nincs LIVE módra váltó kapcsoló.</p>
+<h2 id="section-16">15. Megvalósítási sorrend és üzleti stop-feltételek</h2>
+<p><strong>Első kapu: jog és technika.</strong> Az ország, platformjogosultság, költségkeret, vállalható veszteség és adattovábbítás tisztázása. A nyilvános API-sémák és a feed elérhetőségének helyi integrációs próbája. Bizonytalanság esetén nincs pénzes végrehajtás.</p>
+<p><strong>Második kapu: mérés.</strong> Egy eseménycsalád, szabályverziózás, valós idejű forrásarchívum, minden jelzés és minden elutasítás megőrzése. Szükség szerint többhetes vagy többhavi adatfelvétel; a naptár önmagában nem bizonyíték.</p>
+<p><strong>Harmadik kapu: fair-value kutatás.</strong> Egyszerű baseline, specialist modell, kalibráció, érintetlen tesztminta, forward paper és költségstressz. Ha a nettó előny nem bizonyítható vagy a várható havi kapacitás nem fedezi a működést, az ágat le kell állítani vagy új hipotézisre váltani. Nem a tétet kell emelni.</p>
+<p><strong>Negyedik kapu: nagyon kis pénzes pilot.</strong> Csak az előző kapuk és a külön pénzes adapter teljesítése után. Célja a valós fill, díj, elszámolás és veszteségmechanika összevetése a paper modellel, nem a bevétel maximalizálása. Az induló összeget a konkrét tőke és maximális elfogadható veszteség nélkül nem határozzuk meg.</p>
+<p><strong>Ötödik kapu: fokozatos skálázás.</strong> Csak akkor, ha a valós eredmény, a forward becslés és a likviditási kapacitás összhangban marad. A tőkenövelés nem lehet gyorsabb, mint a végrehajthatóságról szerzett bizonyíték.</p>
+<p>A profitot kereső legjobb döntés időnként az, hogy nem kötünk. A projekt célja nem egy örökké aktív bot, hanem annak megállapítása, mikor indokolható ténylegesen a pénz kockáztatása.</p>
+<h2 id="section-17">Forrásjegyzék</h2>
+<p>A dokumentációk hozzáférési dátuma: <strong>2026. szeptember 15.</strong> A jelentések és tanulmányok történeti megállapításai nem jelen idejű hozamígéretek.</p>
+<ul>
+<li><strong>[S1]</strong> Polymarket — Fees: <a href="https://docs.polymarket.com/trading/fees">https://docs.polymarket.com/trading/fees</a></li>
+<li><strong>[S2]</strong> Polymarket — Market Details: <a href="https://docs.polymarket.com/market-data/market-details">https://docs.polymarket.com/market-data/market-details</a></li>
+<li><strong>[S3]</strong> Polymarket — Prices &amp; Orderbook: <a href="https://docs.polymarket.com/concepts/prices-orderbook">https://docs.polymarket.com/concepts/prices-orderbook</a></li>
+<li><strong>[S4]</strong> Polymarket — Discover Markets: <a href="https://docs.polymarket.com/market-data/discover-markets">https://docs.polymarket.com/market-data/discover-markets</a></li>
+<li><strong>[S5]</strong> Saguillo et al. — Unravelling the Probabilistic Forest: Arbitrage in Prediction Markets (2025): <a href="https://arxiv.org/abs/2508.03474">https://arxiv.org/abs/2508.03474</a></li>
+<li><strong>[S6]</strong> Cheng, Yang, Zou — Arbitrage Analysis in Polymarket NBA Markets (2026): <a href="https://arxiv.org/abs/2605.00864">https://arxiv.org/abs/2605.00864</a></li>
+<li><strong>[S7]</strong> Gebele, Mutzel, Matthes — Executable Arbitrage and Market Efficiency in Prediction Markets (2026): <a href="https://arxiv.org/abs/2608.00666">https://arxiv.org/abs/2608.00666</a></li>
+<li><strong>[S8]</strong> Polymarket — Market Making: <a href="https://docs.polymarket.com/trading/market-making">https://docs.polymarket.com/trading/market-making</a></li>
+<li><strong>[S9]</strong> Polymarket — Place Orders: <a href="https://docs.polymarket.com/trading/place-orders">https://docs.polymarket.com/trading/place-orders</a></li>
+<li><strong>[S10]</strong> Polymarket — Negative Risk: <a href="https://docs.polymarket.com/concepts/negative-risk">https://docs.polymarket.com/concepts/negative-risk</a></li>
+<li><strong>[S11]</strong> Polymarket — Manage Orders: <a href="https://docs.polymarket.com/trading/manage-orders">https://docs.polymarket.com/trading/manage-orders</a></li>
+<li><strong>[S12]</strong> Polymarket — Resolution: <a href="https://docs.polymarket.com/concepts/resolution">https://docs.polymarket.com/concepts/resolution</a></li>
+<li><strong>[S13]</strong> Polymarket — Python SDK: <a href="https://docs.polymarket.com/getting-started/python">https://docs.polymarket.com/getting-started/python</a></li>
+<li><strong>[S14]</strong> Polymarket — Polymarket USD: <a href="https://docs.polymarket.com/concepts/pusd">https://docs.polymarket.com/concepts/pusd</a></li>
+<li><strong>[S15]</strong> Portfolio — „Kitiltották Magyarországról a Polymarket platformot”, 2026. január 19. Keresési indexben ellenőrzött cím/dátum; a találat a kiadó főoldalára irányított: <a href="https://www.portfolio.hu/">https://www.portfolio.hu/</a></li>
+<li><strong>[S16]</strong> SZTFH — Szerencsejátékügyi blokkolt honlapok nyilvántartása; a vizsgálat nem igazolta név szerint az eredeti határozat mai hatályát vagy a feloldást: <a href="https://sztfh.hu/nyilvantartasok/szerencsejatekugyi-blokkolt-honlapok/">https://sztfh.hu/nyilvantartasok/szerencsejatekugyi-blokkolt-honlapok/</a></li>
+<li><strong>[S17]</strong> Polymarket — Geoblock: <a href="https://docs.polymarket.com/api-reference/geoblock">https://docs.polymarket.com/api-reference/geoblock</a></li>
+<li><strong>[S18]</strong> ESMA — TRV Risk Monitor No. 2, 2026, 2026. szeptember 10., predikciós piacokról szóló rész, a PDF 50–52. oldalai: <a href="https://www.esma.europa.eu/sites/default/files/2026-09/ESMA50-1949966494-4282_TRV_Risk_Monitor_2_2026.pdf">https://www.esma.europa.eu/sites/default/files/2026-09/ESMA50-1949966494-4282_TRV_Risk_Monitor_2_2026.pdf</a></li>
+<li><strong>[S19]</strong> xAI — Structured Outputs: <a href="https://docs.x.ai/developers/model-capabilities/text/structured-outputs">https://docs.x.ai/developers/model-capabilities/text/structured-outputs</a></li>
+<li><strong>[S20]</strong> National Weather Service — API documentation: <a href="https://www.weather.gov/documentation/services-web-api">https://www.weather.gov/documentation/services-web-api</a></li>
+</ul>
+<p><strong>Az átadott programhoz tartozó vizsgálati jegyzőkönyvek:</strong> <code>test_results.txt</code>, <code>ui_test_results.json</code>. Ezek szoftverviselkedést ellenőriznek; sem saját stratégiaprofitot, sem jogi megfelelőséget nem tanúsítanak.</p>
+<div class="end">Polymarket Research Lab / 1.0 · Az anyag nem állít garantált hozamot vagy személyre szabott jogi megfelelőséget. A kötések teljes költsége elveszhet.</div></article></div><button class="print" onclick="window.print()">Nyomtatás</button></body></html>
