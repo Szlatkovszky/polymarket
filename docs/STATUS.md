@@ -34,7 +34,9 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
   contract resolution quantity (station + local date + rounding), not city weather.
   Interval probs `F(b)-F(a)` under a Normal error model with rounding/boundary
   hooks. Always logs raw / identity-calibrated / historical base rate / market mid.
-  ABSTAIN when station, rules, source, vintage, or forecast max is missing/ambiguous
+  ABSTAIN when station, rules, source, vintage, or forecast max is missing/ambiguous.
+  Unspecified NOAA rounding ABSTAINs until rules-review supplies mode+increment;
+  the specialist does not invent half-up from Temp-column language.
 - **NWS-shaped source adapter**: fixture archive is the CI default; optional live
   GET behind `NWS_ALLOW_NETWORK=1`. Observation lag (~20 min). Missing max/min stay
   null (never 0). Incomplete series is never promoted to official daily max.
@@ -49,13 +51,18 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
   cluster bootstrap
 - **Human rules-review CLI + API**: exact `rules_hash`, semantic `cluster_id`,
   timezone-aware `trading_cutoff`, expected settlement source, optional PAPER
-  `model_version` authorize. Missing or mismatched review → `missing_rules_review`
+  `model_version` authorize, optional **rounding** (`rounding_mode`,
+  `rounding_increment`, optional `rounding_unit`). NOAA city daily-high markets
+  parse as `rounding.mode=unspecified`; the specialist ABSTAINs
+  (`rounding_unspecified`) until a human records a concrete algorithm
+  (currently `half_up` + positive increment). Missing or mismatched review →
+  `missing_rules_review`. This is not invented rounding from Temp-column text.
 - **Forecast/decision archive**: every weather-forecast run (PROPOSE and ABSTAIN)
   stores timestamped variants plus **re-runnable `request_json` / `input_hash`**
 - **Forward paper runner** (`paper-run`): dry default, loop-friendly positive
   `--max-cycles`, optional `--import-paper` through `risk-v2`. **Never auto-settles**
 - Offline `tests/test_lab.py` + `tests/test_weather_specialist.py` +
-  `tests/test_kapu_b.py` (no network)
+  `tests/test_weather_contract.py` + `tests/test_kapu_b.py` (no network)
 
 ## Locked strategy vs code
 
@@ -71,7 +78,7 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
 |---|---|---|
 | Weather-like market discovery | Fixture classify + ingest; network discover uses Gamma `public-search` behind explicit flags | Real-schema soak, tag coverage, rate-limit behavior in production |
 | Raw GET archive | Append-only `raw_archive` + market `raw_json` + book snapshots + `rules_hash` | Retention policy; recorded live corpus separate from CI fixtures |
-| Human rules review | CLI `show-rules` / `rules-review` + `GET /api/markets/{id}` + HTTP POST | Exception handling, rule-change watcher, cutoff-timezone UI |
+| Human rules review | CLI `show-rules` / `rules-review` + `GET /api/markets/{id}` + HTTP POST; optional rounding fields so PAPER can clear NOAA `rounding_unspecified` | Exception handling, rule-change watcher, cutoff-timezone UI |
 | PAPER model authorize | `--authorize-model` / `POST /api/models/authorize`; per-review pin | Statistical qualification (explicitly not this flag) |
 | No review → no position | `missing_rules_review` on `import_forecast` and `--import-paper` runner | — (wired) |
 | Forecast + ABSTAIN log | `research_estimates` + `decisions` with timestamps | Live vintage completeness |
@@ -86,7 +93,7 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
 |---|---|---|
 | Public Gamma/CLOB GET | Fixture adapter + optional network GET + weather-like discovery | Real-schema soak / rate limits / production archive not done |
 | Market and book log | SQLite meta + snapshot + hash + append-only raw archive | Retention policy; live event-time corpus |
-| Rules review | CLI + HTTP (hash, cluster, cutoff, settlement source, PAPER model pin) | Exceptions, rule-change watcher |
+| Rules review | CLI + HTTP (hash, cluster, cutoff, settlement source, PAPER model pin, optional rounding). Omitting rounding on NOAA city markets stays ABSTAIN | Exceptions, rule-change watcher |
 | Specialist model | Weather baseline + identity calibration stub + variant log | **Fitted** external calibration vintage; extremes/regime-shift model; econ-print family |
 | NWS / contract source | Timestamped fixture archive; optional live GET (observations only) | Recorded live vintages; official daily-max settlement watcher; live forecast-grid mapping |
 | Grok API | Stub + ceiling + critique interface (not wired) | Configurable model, strict JSON, spend enforcement |
@@ -119,13 +126,16 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
 
 ## Next recommended work
 
-1. Recorded live GET corpus (Gamma/CLOB + NWS vintages) **separate from CI fixtures**,
+1. Human rules-review of live NOAA city markets must fill `rounding_mode` +
+   `rounding_increment` (PAPER only) or those markets stay ABSTAIN. Do not
+   invent half-up from whole-degree Temp-column wording.
+2. Recorded live GET corpus (Gamma/CLOB + NWS vintages) **separate from CI fixtures**,
    still without orders.
-2. Official daily-max settlement watcher with human-cited payoff only.
-3. External calibration vintage (replace identity stub) scored against the
+3. Official daily-max settlement watcher with human-cited payoff only.
+4. External calibration vintage (replace identity stub) scored against the
    resolution quantity, with a pre-registered holdout.
-4. Keep B (basket) as research notes + diagnostics until a formal basket state table exists.
-5. Do not start C or live tech while Kapu C/D are red.
+5. Keep B (basket) as research notes + diagnostics until a formal basket state table exists.
+6. Do not start C or live tech while Kapu C/D are red.
 
 Grok wiring and any CLOB/wallet work stay behind those gates.
 Hungary: **stay PAPER**. No proven edge.

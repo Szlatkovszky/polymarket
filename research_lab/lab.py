@@ -44,6 +44,11 @@ from research_lab.specialist import (
 )
 from research_lab.store import Store
 from research_lab.timeutil import Clock, SystemUTCClock, isoformat_utc, parse_utc
+from research_lab.weather_math import (
+    RoundingReviewError,
+    normalize_review_rounding,
+    review_rounding_hint,
+)
 from research_lab.weather_pipeline import run_weather_baseline
 from research_lab.weather_source import build_weather_source
 
@@ -522,6 +527,9 @@ class Lab:
         paper_model_version: str = "",
         notes: str = "",
         authorize_model_version: str | None = None,
+        rounding_mode: str | None = None,
+        rounding_increment: str | Decimal | int | float | None = None,
+        rounding_unit: str | None = None,
     ) -> dict[str, Any]:
         market = self.store.get_market(market_id)
         if market is None:
@@ -531,6 +539,14 @@ class Lab:
         parse_utc(trading_cutoff)
         settlement = (expected_settlement_source or expected_resolution or "").strip()
         model_version = (authorize_model_version or paper_model_version or "").strip()
+        try:
+            rounding = normalize_review_rounding(
+                mode=rounding_mode,
+                increment=rounding_increment,
+                unit=rounding_unit,
+            )
+        except RoundingReviewError as exc:
+            raise LabError(str(exc)) from exc
         self.store.insert_rules_review(
             {
                 "market_id": market_id,
@@ -540,6 +556,9 @@ class Lab:
                 "expected_resolution": expected_resolution or settlement,
                 "expected_settlement_source": settlement,
                 "paper_model_version": model_version or None,
+                "rounding_mode": rounding["rounding_mode"],
+                "rounding_increment": rounding["rounding_increment"],
+                "rounding_unit": rounding["rounding_unit"],
                 "reviewer": reviewer,
                 "reviewed_at": isoformat_utc(self.now()),
                 "notes": notes,
@@ -558,6 +577,9 @@ class Lab:
             "trading_cutoff": isoformat_utc(parse_utc(trading_cutoff)),
             "expected_settlement_source": settlement,
             "paper_model_version": model_version or None,
+            "rounding_mode": rounding["rounding_mode"],
+            "rounding_increment": rounding["rounding_increment"],
+            "rounding_unit": rounding["rounding_unit"],
             "authorized_for_paper_use_only": bool(model_version),
             "note": "PAPER review only. Not a statistical qualification or live promotion.",
         }
@@ -582,8 +604,10 @@ class Lab:
             "live_trading": False,
             "note": (
                 "Human must record the exact logged rules_hash, semantic cluster, "
-                "trading cutoff, and expected settlement source. Authorizing a "
-                "model is a PAPER-use flag, not a qualification."
+                "trading cutoff, and expected settlement source. NOAA city markets "
+                "that parse as rounding.mode=unspecified also need rounding_mode "
+                "plus rounding_increment (optional rounding_unit) or the specialist "
+                "ABSTAINs. Authorizing a model is a PAPER-use flag, not a qualification."
             ),
         }
 
@@ -607,6 +631,11 @@ class Lab:
                     "paper_model_version": None
                     if review is None
                     else review["paper_model_version"],
+                    "rounding_mode": None if review is None else review["rounding_mode"],
+                    "rounding_increment": None
+                    if review is None
+                    else review["rounding_increment"],
+                    "rounding_unit": None if review is None else review["rounding_unit"],
                 }
             )
         return out
@@ -646,6 +675,11 @@ class Lab:
         if mid is not None:
             hints["market_mid"] = str(mid)
             hints["market_mid_available_at"] = mid_at
+        review = self.store.get_rules_review(market_id)
+        if review is not None and review["rules_hash"] == market.rules_hash:
+            rounding_hint = review_rounding_hint(dict(review))
+            if rounding_hint:
+                hints["rules_review_rounding"] = rounding_hint
         return ResearchRequest(
             market_id=market.market_id,
             condition_id=market.condition_id,
@@ -775,7 +809,7 @@ class Lab:
             "measurable": [
                 "weather_like_discovery_via_get_only_adapters",
                 "raw_archive_plus_market_meta_plus_book_snapshots_plus_rules_hash",
-                "human_rules_review_hash_cluster_cutoff_settlement_source",
+                "human_rules_review_hash_cluster_cutoff_settlement_source_optional_rounding",
                 "paper_only_model_authorize",
                 "forecast_abstain_refusal_archive_with_rerunnable_inputs",
                 "forward_paper_runner_dry_loop",
