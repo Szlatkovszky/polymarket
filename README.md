@@ -76,6 +76,10 @@ export POLYMARKET_ALLOW_NETWORK=1
 
 This still cannot place orders. Treat responses as untrusted market data.
 
+Network `discover` uses Gamma `GET /public-search?q=...` (weather keywords +
+pagination). Top `GET /markets` is politics-first and will miss city daily-high
+contracts. Fixture classify remains the CI default.
+
 ## Import a valid forecast envelope
 
 1. `POST /api/ingest` — writes market metadata, full rules text, `rules_hash`, and a book snapshot.

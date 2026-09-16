@@ -93,6 +93,10 @@ class RoundingRule:
     mode: str = "half_up"
 
     def underlying_ge(self, rounded_threshold: Decimal) -> Decimal:
+        if self.mode == "unspecified":
+            raise ValueError(
+                "unspecified rounding cannot map a reported interval to underlying T"
+            )
         if self.mode != "half_up":
             raise ValueError(f"unsupported rounding mode {self.mode!r}")
         if self.increment <= 0:

@@ -14,7 +14,11 @@ from typing import Any, Literal, Mapping, Protocol
 from research_lab.money import D
 from research_lab.research_budget import ResearchBudget, weather_specialist_enabled
 from research_lab.timeutil import isoformat_utc, parse_utc
-from research_lab.weather_contract import ContractParse, parse_weather_contract
+from research_lab.weather_contract import (
+    ContractParse,
+    bounds_to_celsius,
+    parse_weather_contract,
+)
 from research_lab.weather_math import (
     IdentityBoundaryHook,
     conservative_band,
@@ -182,6 +186,19 @@ class WeatherStationBaseline:
                 extra={"parse": parsed.details},
             )
         contract = parsed.contract
+        if contract.rounding.mode == "unspecified":
+            return _abstain(
+                self,
+                request,
+                "rounding_unspecified",
+                extra={
+                    "parse": parsed.details,
+                    "note": (
+                        "NOAA city markets often omit the rounding algorithm. "
+                        "Do not invent half-up; wait for human rules-review."
+                    ),
+                },
+            )
 
         try:
             snap = self.source.snapshot(
@@ -245,10 +262,15 @@ class WeatherStationBaseline:
         else:
             unofficial_note = "official_field_present"
 
-        lower_u, upper_u = contract.rounding.underlying_interval(
+        lower_native, upper_native = contract.rounding.underlying_interval(
             contract.rounded_lower,
             contract.rounded_upper,
             hook=self.boundary_hook,
+        )
+        # Forecast μ is Celsius. Map the underlying interval into C after
+        # rounding in the contract's native unit (do not round in mixed units).
+        lower_u, upper_u = bounds_to_celsius(
+            lower_native, upper_native, contract.unit
         )
         raw_p = interval_prob(fc.predicted_max_c, snap.sigma_c, lower_u, upper_u)
         mu_c, sigma_c = self.calibrator.apply(

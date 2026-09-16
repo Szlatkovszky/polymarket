@@ -34,6 +34,12 @@ def test_weather_like_classifier_fixtures() -> None:
     assert classified["900004"].specialist_parse_ok is True
     assert classified["900005"].weather_like is True
     assert classified["900005"].specialist_parse_ok is False
+    assert classified["900006"].weather_like is True
+    assert classified["900006"].specialist_parse_ok is True
+    assert classified["900007"].weather_like is True
+    assert classified["900007"].specialist_parse_ok is True
+    assert classified["900008"].weather_like is True
+    assert classified["900008"].specialist_parse_ok is True
     assert classified["900002"].weather_like is False
     assert classified["900003"].weather_like is False
     coin = classify_weather_market(FixtureGamma().get_market("900002"))
@@ -52,8 +58,22 @@ def test_discover_and_ingest_archives_raw_and_rules_hash(tmp_path: Path) -> None
     assert result["source"] == "fixtures"
     assert result["network"] is False
     assert result["live_orders"] is False
-    assert set(result["weather_like_ids"]) == {"900001", "900004", "900005"}
-    assert set(result["ingested"]) == {"900001", "900004", "900005"}
+    assert set(result["weather_like_ids"]) == {
+        "900001",
+        "900004",
+        "900005",
+        "900006",
+        "900007",
+        "900008",
+    }
+    assert set(result["ingested"]) == {
+        "900001",
+        "900004",
+        "900005",
+        "900006",
+        "900007",
+        "900008",
+    }
     assert lab.store.get_market("900002") is None
     kmia = lab.store.get_market("900004")
     assert kmia is not None
@@ -69,7 +89,7 @@ def test_discover_and_ingest_archives_raw_and_rules_hash(tmp_path: Path) -> None
 def test_full_ingest_still_archives_and_keeps_non_weather(tmp_path: Path) -> None:
     lab = _paper_lab(tmp_path)
     ids = {m.market_id for m in lab.store.list_markets()}
-    assert {"900001", "900002", "900003", "900004", "900005"} <= ids
+    assert {"900001", "900002", "900003", "900004", "900005", "900006"} <= ids
     archive = lab.store.list_raw_archive(kind="gamma_list")
     assert archive
     assert archive[0]["payload_hash"]

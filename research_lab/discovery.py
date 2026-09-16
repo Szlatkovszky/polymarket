@@ -21,10 +21,11 @@ from research_lab.weather_contract import _STATION_RE, parse_weather_contract
 _WEATHER_HINT_RE = re.compile(
     r"(weather|temperature|daily\s+max(?:imum)?|nws|accuweather|"
     r"weather\.gov|celsius|fahrenheit|°\s*[cf]\b|precipitation|rainfall|"
-    r"hottest|coldest|high\s+temp)",
+    r"hottest|coldest|high\s+temp|timeseries\?site=)",
     re.IGNORECASE,
 )
-_TEMP_C_RE = re.compile(r"\b-?\d+(?:\.\d+)?\s*°?\s*C\b", re.IGNORECASE)
+_TEMP_C_RE = re.compile(r"\b-?\d+(?:\.\d+)?\s*°?\s*[CF]\b", re.IGNORECASE)
+_SITE_RE = re.compile(r"[?&]site=([A-Za-z]{4})\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -81,7 +82,9 @@ def classify_weather_market(raw: Mapping[str, Any]) -> WeatherMarketClass:
         rules_hash=rules_hash,
         resolution_source=resolution_s,
     )
-    station_hit = _STATION_RE.search(rules_text) is not None
+    station_hit = (
+        _STATION_RE.search(rules_text) is not None or _SITE_RE.search(blob) is not None
+    )
     hint_hit = _WEATHER_HINT_RE.search(blob) is not None
     temp_hit = _TEMP_C_RE.search(blob) is not None
     weather_like = bool(parsed.ok or station_hit or hint_hit or temp_hit)
