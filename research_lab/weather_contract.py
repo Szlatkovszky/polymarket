@@ -38,6 +38,20 @@ STATION_TIMEZONES: dict[str, str] = {
     "RKSI": "Asia/Seoul",
     "KLAX": "America/Los_Angeles",
     "KMIA": "America/New_York",
+    "KLGA": "America/New_York",
+    "KJFK": "America/New_York",
+    "KNYC": "America/New_York",
+    "KEWR": "America/New_York",
+    "KDAL": "America/Chicago",
+    "KDFW": "America/Chicago",
+    "KORD": "America/Chicago",
+    "KMDW": "America/Chicago",
+    "KBKF": "America/Denver",
+    "KDEN": "America/Denver",
+    "KPHX": "America/Phoenix",
+    "KSEA": "America/Los_Angeles",
+    "KSFO": "America/Los_Angeles",
+    "KATL": "America/New_York",
 }
 
 _STATION_RE = re.compile(
