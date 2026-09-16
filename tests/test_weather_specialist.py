@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -32,9 +34,11 @@ from research_lab.weather_math import (
 )
 from research_lab.weather_pipeline import estimate_to_decision, run_weather_baseline
 from research_lab.weather_source import (
+    FIXTURE_DIR,
     FixtureNWS,
     NetworkNWS,
     WeatherSourceError,
+    nws_default_sigma_c,
     official_daily_max,
     unofficial_series_max_c,
 )
@@ -358,6 +362,179 @@ def test_weather_import_into_paper_path_still_risk_v2(tmp_path: Path) -> None:
 def test_network_nws_requires_flag() -> None:
     with pytest.raises(WeatherSourceError, match="NWS_ALLOW_NETWORK"):
         NetworkNWS()
+
+
+KLGA_AS_OF = "2026-09-16T12:00:00+00:00"
+KLGA_LOCAL_DATE = "2026-09-16"
+_F79_C = (D(79) - D(32)) * D(5) / D(9)
+_F80_C = (D(80) - D(32)) * D(5) / D(9)
+
+
+def _klga_network_responses() -> dict:
+    archive = json.loads((FIXTURE_DIR / "nws_network_klga.json").read_text(encoding="utf-8"))
+    return json.loads(json.dumps(archive["responses"]))
+
+
+def _klga_http_get(
+    responses: dict | None = None,
+    *,
+    missing: set[str] | None = None,
+    calls: list[str] | None = None,
+):
+    table = responses if responses is not None else _klga_network_responses()
+    missing = set(missing or [])
+
+    def _get(url: str, *, timeout: float = 20.0) -> dict:
+        del timeout
+        path = urlparse(url).path.lstrip("/")
+        if calls is not None:
+            calls.append(path)
+        if path in missing:
+            raise WeatherSourceError(f"GET {url} -> 404")
+        if path not in table:
+            raise WeatherSourceError(f"GET {url} -> 404")
+        return json.loads(json.dumps(table[path]))
+
+    return _get
+
+
+def _network_nws(monkeypatch: pytest.MonkeyPatch, http_get) -> NetworkNWS:
+    monkeypatch.setenv("NWS_ALLOW_NETWORK", "1")
+    monkeypatch.delenv("NWS_DEFAULT_SIGMA_C", raising=False)
+    return NetworkNWS(http_get=http_get)
+
+
+def _klga_request(**overrides) -> ResearchRequest:
+    payload = {
+        "market_id": "klga-paper",
+        "condition_id": None,
+        "rules_text": (
+            "station KLGA daily maximum for the local calendar date 2026-09-16 "
+            "in America/New_York is at least 26.0 C after half-up rounding to 0.1 C."
+        ),
+        "rules_hash": "d" * 64,
+        "as_of": KLGA_AS_OF,
+        "cutoff_at": None,
+        "resolution_source": "https://api.weather.gov/stations/KLGA",
+    }
+    payload.update(overrides)
+    return ResearchRequest(**payload)
+
+
+def test_network_nws_klga_fixture_maps_forecast_and_default_sigma(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    source = _network_nws(monkeypatch, _klga_http_get(calls=calls))
+    snap = source.snapshot(
+        station_id="KLGA", local_date=KLGA_LOCAL_DATE, as_of=KLGA_AS_OF
+    )
+    assert snap.forecast is not None
+    assert snap.forecast.station_id == "KLGA"
+    assert snap.forecast.valid_date_local == KLGA_LOCAL_DATE
+    assert snap.forecast.predicted_max_c == _F79_C
+    assert parse_utc(snap.forecast.issued_at) <= parse_utc(KLGA_AS_OF)
+    assert parse_utc(snap.forecast.available_at) <= parse_utc(KLGA_AS_OF)
+    assert snap.forecast.url.endswith("/gridpoints/OKX/37,46/forecast")
+    assert snap.sigma_c == D("1.5")
+    assert snap.sigma_source.startswith("uncalibrated_assumption:NWS_DEFAULT_SIGMA_C")
+    assert snap.official_daily_max.complete is False
+    assert snap.official_daily_max.value_c is None
+    unofficial = unofficial_series_max_c(snap.observations)
+    assert unofficial == D("22.2")
+    assert "gridpoints/OKX/37,46/forecast/hourly" not in calls
+    assert any(path.startswith("points/") for path in calls)
+
+
+def test_network_nws_look_ahead_generated_at_drops_vintage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _network_nws(monkeypatch, _klga_http_get())
+    snap = source.snapshot(
+        station_id="KLGA",
+        local_date=KLGA_LOCAL_DATE,
+        as_of="2026-09-16T08:00:00+00:00",
+    )
+    assert snap.forecast is None
+    est = WeatherStationBaseline(source).estimate(
+        _klga_request(as_of="2026-09-16T08:00:00+00:00")
+    )
+    assert est.status == "ABSTAIN"
+    assert est.reason == "no_vintage_available"
+
+
+def test_network_nws_rjtt_404_abstains_missing_station(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _network_nws(
+        monkeypatch, _klga_http_get(missing={"stations/RJTT"})
+    )
+    with pytest.raises(WeatherSourceError, match="missing_station:RJTT:out_of_nws_domain"):
+        source.snapshot(station_id="RJTT", local_date=KLGA_LOCAL_DATE, as_of=KLGA_AS_OF)
+    est = WeatherStationBaseline(source).estimate(
+        _klga_request(
+            rules_text=(
+                "station RJTT daily maximum for the local calendar date 2026-09-16 "
+                "in Asia/Tokyo is at least 32.0 C after half-up rounding to 0.1 C."
+            ),
+            resolution_source="https://api.weather.gov/stations/RJTT",
+        )
+    )
+    assert est.status == "ABSTAIN"
+    assert est.reason == "missing_station"
+
+
+def test_network_nws_hourly_fallback_when_twelveh_has_no_daytime_high(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = _klga_network_responses()
+    twelveh = responses["gridpoints/OKX/37,46/forecast"]
+    twelveh["properties"]["periods"] = [
+        period
+        for period in twelveh["properties"]["periods"]
+        if period.get("isDaytime") is not True
+        or not str(period.get("startTime", "")).startswith("2026-09-16")
+    ]
+    source = _network_nws(monkeypatch, _klga_http_get(responses))
+    snap = source.snapshot(
+        station_id="KLGA", local_date=KLGA_LOCAL_DATE, as_of=KLGA_AS_OF
+    )
+    assert snap.forecast is not None
+    assert snap.forecast.predicted_max_c == _F80_C
+    assert snap.forecast.url.endswith("/forecast/hourly")
+
+
+def test_network_nws_klga_fixture_can_propose(monkeypatch: pytest.MonkeyPatch) -> None:
+    source = _network_nws(monkeypatch, _klga_http_get())
+    req = _klga_request()
+    est = WeatherStationBaseline(source).estimate(req)
+    assert est.status == "ESTIMATE"
+    decision = estimate_to_decision(est, req)
+    assert decision["action"] == "PROPOSE"
+    assert decision["forecast"]["p_yes"] > 0
+    for src in decision["forecast"]["sources"]:
+        assert parse_utc(src["available_at"]) <= parse_utc(KLGA_AS_OF)
+
+
+def test_nws_default_sigma_env_and_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NWS_DEFAULT_SIGMA_C", "2.25")
+    sigma, source_label = nws_default_sigma_c()
+    assert sigma == D("2.25")
+    assert "2.25" in source_label
+    monkeypatch.setenv("NWS_DEFAULT_SIGMA_C", "0")
+    sigma, source_label = nws_default_sigma_c()
+    assert sigma is None
+    assert source_label == "invalid_nws_default_sigma_c"
+    nws = _network_nws(monkeypatch, _klga_http_get())
+    monkeypatch.setenv("NWS_DEFAULT_SIGMA_C", "-1")
+    snap = nws.snapshot(
+        station_id="KLGA", local_date=KLGA_LOCAL_DATE, as_of=KLGA_AS_OF
+    )
+    assert snap.forecast is not None
+    assert snap.sigma_c is None
+    est = WeatherStationBaseline(nws).estimate(_klga_request())
+    assert est.status == "ABSTAIN"
+    assert est.reason == "missing_error_scale"
 
 
 def test_http_weather_flow_and_grok_does_not_override(tmp_path: Path) -> None:

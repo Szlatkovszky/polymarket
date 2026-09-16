@@ -40,6 +40,10 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
 - **NWS-shaped source adapter**: fixture archive is the CI default; optional live
   GET behind `NWS_ALLOW_NETWORK=1`. Observation lag (~20 min). Missing max/min stay
   null (never 0). Incomplete series is never promoted to official daily max.
+  Live path maps gridpoint forecast (12-hour daytime high, hourly fallback) to
+  `predicted_max` using station timezone + `generatedAt`/`updateTime` (no look-ahead).
+  `NWS_DEFAULT_SIGMA_C` (default 1.5 C) is an uncalibrated assumption.
+  Non-US ICAO that 404 (e.g. RJTT) → **ABSTAIN** `missing_station`.
   Contract naming a different provider (e.g. AccuWeather) → **ABSTAIN**, no NWS swap
 - Research cost + call ceilings (`RESEARCH_COST_CEILING_USD`,
   `RESEARCH_MAX_CALLS_PER_CYCLE`, `RESEARCH_MIN_INTERVAL_SECONDS`); fixture reads
@@ -95,7 +99,7 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
 | Market and book log | SQLite meta + snapshot + hash + append-only raw archive | Retention policy; live event-time corpus |
 | Rules review | CLI + HTTP (hash, cluster, cutoff, settlement source, PAPER model pin, optional rounding). Omitting rounding on NOAA city markets stays ABSTAIN | Exceptions, rule-change watcher |
 | Specialist model | Weather baseline + identity calibration stub + variant log | **Fitted** external calibration vintage; extremes/regime-shift model; econ-print family |
-| NWS / contract source | Timestamped fixture archive; optional live GET (observations only) | Recorded live vintages; official daily-max settlement watcher; live forecast-grid mapping |
+| NWS / contract source | Timestamped fixture archive; optional live GET of observations **and** gridpoint forecast (current document only; `NWS_DEFAULT_SIGMA_C` uncalibrated) | Recorded live vintages / historical as_of replay; official daily-max settlement watcher; fitted error scale |
 | Grok API | Stub + ceiling + critique interface (not wired) | Configurable model, strict JSON, spend enforcement |
 | Grok → paper signal | JSON import + POST; specialist is the numeric path | Trusted source archive |
 | Fair-value paper executor | Simulated FOK + `risk-v2` microstructure gates + dry paper-run | Latency stress vs fill model |
