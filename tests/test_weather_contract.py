@@ -14,7 +14,7 @@ from research_lab.adapters import (
 )
 from research_lab.discovery import classify_weather_market, classify_weather_markets
 from research_lab.hashing import rules_hash_from_text
-from research_lab.lab import _rules_text
+from research_lab.lab import LabError, _rules_text
 from research_lab.money import D
 from research_lab.specialist import WeatherStationBaseline
 from research_lab.weather_contract import (
@@ -24,7 +24,7 @@ from research_lab.weather_contract import (
     resolution_source_is_nws,
 )
 from test_lab import _lab
-from test_weather_specialist import _kmia_rules, _request_for_market
+from test_weather_specialist import AS_OF, _kmia_rules, _request_for_market
 
 
 def _fixture_parse(market_id: str):
@@ -211,6 +211,91 @@ def test_specialist_abstains_unspecified_rounding_on_tokyo(tmp_path: Path) -> No
     est = WeatherStationBaseline().estimate(req)
     assert est.status == "ABSTAIN"
     assert est.reason == "rounding_unspecified"
+
+
+def test_tokyo_rules_review_without_rounding_still_abstains(tmp_path: Path) -> None:
+    lab = _lab(tmp_path)
+    market = lab.store.get_market("900006")
+    assert market is not None
+    recorded = lab.review_rules(
+        market_id="900006",
+        rules_hash=market.rules_hash,
+        cluster_id="tokyo-rjtt-daily-high",
+        trading_cutoff="2026-09-16T15:00:00+00:00",
+        reviewer="tester",
+        expected_settlement_source=str(market.resolution_source or ""),
+    )
+    assert recorded["rounding_mode"] is None
+    assert recorded["rounding_increment"] is None
+    decision = lab.weather_decision("900006", as_of=AS_OF)
+    assert decision["action"] == "ABSTAIN"
+    assert decision["reason"] == "rounding_unspecified"
+
+
+def test_tokyo_rules_review_half_up_clears_rounding_gate(tmp_path: Path) -> None:
+    lab = _lab(tmp_path)
+    market = lab.store.get_market("900006")
+    assert market is not None
+    with pytest.raises(LabError, match="rounding_increment required"):
+        lab.review_rules(
+            market_id="900006",
+            rules_hash=market.rules_hash,
+            cluster_id="tokyo-rjtt-daily-high",
+            trading_cutoff="2026-09-16T15:00:00+00:00",
+            reviewer="tester",
+            rounding_mode="half_up",
+        )
+    recorded = lab.review_rules(
+        market_id="900006",
+        rules_hash=market.rules_hash,
+        cluster_id="tokyo-rjtt-daily-high",
+        trading_cutoff="2026-09-16T15:00:00+00:00",
+        reviewer="tester",
+        expected_settlement_source=str(market.resolution_source or ""),
+        rounding_mode="half_up",
+        rounding_increment="1",
+        rounding_unit="C",
+    )
+    assert recorded["rounding_mode"] == "half_up"
+    assert recorded["rounding_increment"] == "1"
+    assert recorded["rounding_unit"] == "C"
+    stored = lab.store.get_rules_review("900006")
+    assert stored is not None
+    assert stored["rounding_mode"] == "half_up"
+    assert stored["rounding_increment"] == "1"
+    decision = lab.weather_decision("900006", as_of=AS_OF)
+    assert decision["reason"] != "rounding_unspecified"
+    assert decision["action"] == "PROPOSE"
+    assert decision["imported"] is False
+    contract = (decision.get("diagnostics") or {}).get("contract") or {}
+    assert contract.get("rounding_mode") == "half_up"
+    assert contract.get("rounding_increment") == "1"
+    assert contract.get("rounding_source") == "rules_review"
+    request = lab.store.list_research_estimates("900006")[0]["request"]
+    assert request["specialist_hints"]["rules_review_rounding"] == {
+        "mode": "half_up",
+        "increment": "1",
+        "unit": "C",
+    }
+
+
+def test_review_rounding_unit_mismatch_abstains(tmp_path: Path) -> None:
+    lab = _lab(tmp_path)
+    market = lab.store.get_market("900006")
+    assert market is not None
+    lab.review_rules(
+        market_id="900006",
+        rules_hash=market.rules_hash,
+        cluster_id="tokyo-rjtt-daily-high",
+        trading_cutoff="2026-09-16T15:00:00+00:00",
+        reviewer="tester",
+        rounding_mode="half_up",
+        rounding_increment="1",
+        rounding_unit="F",
+    )
+    decision = lab.weather_decision("900006", as_of=AS_OF)
+    assert decision["action"] == "ABSTAIN"
+    assert decision["reason"] == "rounding_unit_mismatch"
 
 
 def test_fahrenheit_conversion_is_exact_fraction() -> None:

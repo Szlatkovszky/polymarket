@@ -129,10 +129,13 @@ def test_rules_review_cli_fields_and_missing_review_refuses(tmp_path: Path) -> N
     assert recorded["status"] == "recorded"
     assert recorded["expected_settlement_source"].endswith("/KMIA")
     assert recorded["authorized_for_paper_use_only"] is True
+    assert recorded["rounding_mode"] is None
+    assert recorded["rounding_increment"] is None
     review = lab.store.get_rules_review("900004")
     assert review is not None
     assert review["cluster_id"] == "kmia-station-date"
     assert review["paper_model_version"] == WEATHER_MODEL_VERSION
+    assert review["rounding_mode"] is None
     # Unreviewed market still cannot open a weather paper position.
     other = lab.store.get_market("900001")
     assert other is not None
@@ -341,6 +344,70 @@ def test_http_kapu_b_paths(tmp_path: Path) -> None:
         estimate_id = log["estimates"][0]["id"]
         replay = client.post(f"/api/specialist/weather/replay/{estimate_id}").json()
         assert replay["replay_of"] == estimate_id
+
+
+def test_rules_review_cli_help_lists_rounding() -> None:
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-m", "research_lab", "rules-review", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "--rounding-mode" in result.stdout
+    assert "--rounding-increment" in result.stdout
+    assert "--rounding-unit" in result.stdout
+
+
+def test_http_rules_review_rounding_on_tokyo(tmp_path: Path) -> None:
+    lab = _paper_lab(tmp_path)
+    with TestClient(create_app(lab)) as client:
+        detail = client.get("/api/markets/900006").json()
+        missing = client.post(
+            "/api/rules-review",
+            json={
+                "market_id": "900006",
+                "rules_hash": detail["rules_hash"],
+                "cluster_id": "tokyo-rjtt-daily-high",
+                "trading_cutoff": "2026-09-16T15:00:00+00:00",
+                "reviewer": "http-rounding",
+                "rounding_mode": "half_up",
+            },
+        )
+        assert missing.status_code == 400
+        reviewed = client.post(
+            "/api/rules-review",
+            json={
+                "market_id": "900006",
+                "rules_hash": detail["rules_hash"],
+                "cluster_id": "tokyo-rjtt-daily-high",
+                "trading_cutoff": "2026-09-16T15:00:00+00:00",
+                "reviewer": "http-rounding",
+                "expected_settlement_source": detail["resolution_source"],
+                "rounding_mode": "half_up",
+                "rounding_increment": "1",
+                "rounding_unit": "C",
+            },
+        )
+        assert reviewed.status_code == 200
+        body = reviewed.json()
+        assert body["rounding_mode"] == "half_up"
+        assert body["rounding_increment"] == "1"
+        listed = client.get("/api/markets").json()["markets"]
+        tokyo = next(row for row in listed if row["market_id"] == "900006")
+        assert tokyo["rounding_mode"] == "half_up"
+        weather = client.post(
+            "/api/specialist/weather",
+            json={"market_id": "900006", "as_of": AS_OF},
+        )
+        assert weather.status_code == 200
+        decision = weather.json()
+        assert decision["reason"] != "rounding_unspecified"
+        assert decision["action"] == "PROPOSE"
+        assert decision["imported"] is False
 
 
 def test_unbounded_loop_refused(tmp_path: Path) -> None:

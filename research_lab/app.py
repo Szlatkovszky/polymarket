@@ -41,6 +41,9 @@ class RulesReviewBody(BaseModel):
     expected_settlement_source: str = ""
     paper_model_version: str = ""
     notes: str = ""
+    rounding_mode: str | None = None
+    rounding_increment: str | int | float | None = None
+    rounding_unit: str | None = None
 
 
 class AuthorizeModelBody(BaseModel):
@@ -211,6 +214,9 @@ def create_app(lab: Lab | None = None) -> FastAPI:
                 paper_model_version=body.paper_model_version,
                 notes=body.notes,
                 authorize_model_version=body.paper_model_version or None,
+                rounding_mode=body.rounding_mode,
+                rounding_increment=body.rounding_increment,
+                rounding_unit=body.rounding_unit,
             )
         except LabError as exc:
             raise HTTPException(400, str(exc)) from exc

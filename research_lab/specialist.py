@@ -7,7 +7,7 @@ Grok is not a calibrated probability and does not size trades.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any, Literal, Mapping, Protocol
 
@@ -24,6 +24,7 @@ from research_lab.weather_math import (
     conservative_band,
     interval_prob,
     quantize_prob,
+    rounding_rule_from_review_hint,
 )
 from research_lab.weather_source import (
     FixtureNWS,
@@ -186,19 +187,27 @@ class WeatherStationBaseline:
                 extra={"parse": parsed.details},
             )
         contract = parsed.contract
+        rounding_source = "rules_text"
         if contract.rounding.mode == "unspecified":
-            return _abstain(
-                self,
-                request,
-                "rounding_unspecified",
-                extra={
-                    "parse": parsed.details,
-                    "note": (
-                        "NOAA city markets often omit the rounding algorithm. "
-                        "Do not invent half-up; wait for human rules-review."
-                    ),
-                },
+            override, rounding_source = rounding_rule_from_review_hint(
+                _review_rounding_hint(request.specialist_hints),
+                contract_unit=contract.unit,
             )
+            if override is None:
+                return _abstain(
+                    self,
+                    request,
+                    rounding_source or "rounding_unspecified",
+                    extra={
+                        "parse": parsed.details,
+                        "note": (
+                            "NOAA city markets often omit the rounding algorithm. "
+                            "Do not invent half-up; wait for human rules-review "
+                            "to record rounding_mode plus rounding_increment."
+                        ),
+                    },
+                )
+            contract = replace(contract, rounding=override)
 
         try:
             snap = self.source.snapshot(
@@ -214,7 +223,9 @@ class WeatherStationBaseline:
                 return _abstain(self, request, "missing_station", extra={"error": reason})
             return _abstain(self, request, "weather_source_error", extra={"error": reason})
 
-        return self._estimate_from_snapshot(request, contract, snap, as_of)
+        return self._estimate_from_snapshot(
+            request, contract, snap, as_of, rounding_source=rounding_source
+        )
 
     def _estimate_from_snapshot(
         self,
@@ -222,6 +233,8 @@ class WeatherStationBaseline:
         contract,
         snap: WeatherSnapshot,
         as_of: str,
+        *,
+        rounding_source: str = "rules_text",
     ) -> SpecialistEstimate:
         fc = snap.forecast
         if fc is None:
@@ -377,6 +390,9 @@ class WeatherStationBaseline:
                     "rounded_upper": None
                     if contract.rounded_upper is None
                     else str(contract.rounded_upper),
+                    "rounding_mode": contract.rounding.mode,
+                    "rounding_increment": str(contract.rounding.increment),
+                    "rounding_source": rounding_source,
                     "underlying_lower": None if lower_u is None else str(lower_u),
                     "underlying_upper": None if upper_u is None else str(upper_u),
                     "resolution_source": contract.resolution_source,
@@ -447,6 +463,22 @@ def _abstain(
         reason=reason,
         diagnostics=diag,
     )
+
+
+def _review_rounding_hint(hints: Mapping[str, Any]) -> dict[str, Any] | None:
+    nested = hints.get("rules_review_rounding")
+    if isinstance(nested, Mapping) and nested:
+        return dict(nested)
+    flat: dict[str, Any] = {}
+    for src, dest in (
+        ("rounding_mode", "mode"),
+        ("rounding_increment", "increment"),
+        ("rounding_unit", "unit"),
+    ):
+        value = hints.get(src)
+        if value not in (None, ""):
+            flat[dest] = value
+    return flat or None
 
 
 def _snapshot_diag(snap: WeatherSnapshot, contract) -> dict[str, Any]:

@@ -100,6 +100,23 @@ def main() -> None:
         help="PAPER-use model_version flag (not a statistical qualification)",
     )
     rules_review.add_argument(
+        "--rounding-mode",
+        default="",
+        help="Optional human rounding algorithm (half_up | unspecified). "
+        "Required with --rounding-increment to clear NOAA unspecified rounding.",
+    )
+    rules_review.add_argument(
+        "--rounding-increment",
+        default="",
+        help="Optional rounding increment in the contract unit (e.g. 1 or 0.1). "
+        "Required with a concrete --rounding-mode.",
+    )
+    rules_review.add_argument(
+        "--rounding-unit",
+        default="",
+        help="Optional C or F; must match the contract unit when set.",
+    )
+    rules_review.add_argument(
         "--data-dir",
         default=os.environ.get("LAB_DATA_DIR", "data"),
     )
@@ -247,6 +264,9 @@ def _rules_review(args: argparse.Namespace) -> None:
         paper_model_version=args.authorize_model,
         notes=args.notes,
         authorize_model_version=args.authorize_model or None,
+        rounding_mode=args.rounding_mode or None,
+        rounding_increment=args.rounding_increment or None,
+        rounding_unit=args.rounding_unit or None,
     )
     print(json.dumps(recorded, indent=2, sort_keys=True))
 

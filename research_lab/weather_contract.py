@@ -6,7 +6,8 @@ ABSTAIN. Hints never override rules_text.
 NOAA city daily-high markets (highest temperature in {city}) name an ICAO via
 ``?site=`` on weather.gov and often omit half-up rounding. Those parse as
 ``rounding.mode=unspecified``; the specialist must still ABSTAIN until a human
-rules-review fills a rounding algorithm. Do not invent half-up.
+rules-review records ``rounding_mode`` plus ``rounding_increment``. Do not invent
+half-up from display-precision language.
 """
 
 from __future__ import annotations
@@ -567,7 +568,7 @@ def _rounding_from_rules(
                 "note": (
                     "Whole-degree Temp-column language is display precision, "
                     "not a rounding algorithm. Specialist must ABSTAIN until "
-                    "human rules-review fills rounding."
+                    "human rules-review records rounding_mode plus rounding_increment."
                 ),
             },
         )

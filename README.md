@@ -83,7 +83,7 @@ contracts. Fixture classify remains the CI default.
 ## Import a valid forecast envelope
 
 1. `POST /api/ingest` — writes market metadata, full rules text, `rules_hash`, and a book snapshot.
-2. Read `GET /api/markets` and **manually** review the full rule text. Record cluster, cutoff, expected resolution via `POST /api/rules-review` using the **exact** logged `rules_hash`.
+2. Read `GET /api/markets` and **manually** review the full rule text. Record cluster, cutoff, expected resolution via `POST /api/rules-review` using the **exact** logged `rules_hash`. NOAA city daily-high markets that parse as `rounding.mode=unspecified` also need `rounding_mode` (e.g. `half_up`) and `rounding_increment` (e.g. `1`) or the specialist ABSTAINs.
 3. `POST /api/models/authorize` with `model_version`. This is a paper-use flag, not a statistical qualification.
 4. Build JSON that matches `schemas/forecast.schema.json` (see `examples/forecast.example.json`).
    - Timezone-aware UTC timestamps.
@@ -180,6 +180,16 @@ python -m research_lab rules-review --market-id 900004 \
   --authorize-model weather-station-baseline-v1-calibration-identity-stub-v0 \
   --data-dir data
 
+# NOAA city daily-high (Tokyo fixture 900006): parser leaves rounding unspecified.
+# Record half_up/1 only after reading the full rules — do not invent it.
+# python -m research_lab rules-review --market-id 900006 \
+#   --rules-hash <exact-logged-hash> \
+#   --cluster-id tokyo-rjtt-daily-high \
+#   --trading-cutoff 2026-09-16T15:00:00+00:00 \
+#   --expected-settlement-source 'https://www.weather.gov/wrh/timeseries?site=rjtt' \
+#   --rounding-mode half_up --rounding-increment 1 --rounding-unit C \
+#   --reviewer you --data-dir data
+
 # 3. Dry forward cycle (logs PROPOSE/ABSTAIN; does not import; never auto-settles)
 python -m research_lab paper-run --as-of 2026-09-15T12:00:00+00:00 --data-dir data
 
@@ -214,7 +224,7 @@ python -m research_lab replay-estimate --estimate-id 1 --data-dir data
 | POST | `/api/discover` | Weather-like classify + optional ingest; archives raw GET |
 | GET | `/api/markets` | Includes `rules_hash` + review status |
 | GET | `/api/markets/{id}` | Full rules text for human review |
-| POST | `/api/rules-review` | Human gate (hash, cluster, cutoff, settlement source, optional PAPER model) |
+| POST | `/api/rules-review` | Human gate (hash, cluster, cutoff, settlement source, optional PAPER model, optional rounding) |
 | POST | `/api/models/authorize` | Paper-use only |
 | POST | `/api/forecast` | Import + decision path |
 | POST | `/api/paper-run` | Dry/loop collection; never auto-settles |

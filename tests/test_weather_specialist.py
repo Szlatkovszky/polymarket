@@ -22,10 +22,13 @@ from research_lab.timeutil import parse_utc
 from research_lab.weather_contract import parse_weather_contract, resolution_source_is_nws
 from research_lab.weather_math import (
     IdentityBoundaryHook,
+    RoundingReviewError,
     RoundingRule,
     conservative_band,
     interval_prob,
+    normalize_review_rounding,
     normal_cdf,
+    rounding_rule_from_review_hint,
 )
 from research_lab.weather_pipeline import estimate_to_decision, run_weather_baseline
 from research_lab.weather_source import (
@@ -88,6 +91,44 @@ def test_rounding_boundary_half_up() -> None:
     lower, upper = rule.underlying_interval(D("32.0"), D("33.0"))
     assert lower == D("31.95")
     assert upper == D("32.95")
+    whole = RoundingRule(increment=D(1), mode="half_up")
+    lo, hi = whole.underlying_interval(D(24), D(25))
+    assert lo == D("23.5")
+    assert hi == D("24.5")
+    with pytest.raises(ValueError, match="unspecified rounding"):
+        RoundingRule(increment=D(1), mode="unspecified").underlying_ge(D(24))
+
+
+def test_normalize_review_rounding_requires_concrete_pair() -> None:
+    empty = normalize_review_rounding()
+    assert empty == {
+        "rounding_mode": None,
+        "rounding_increment": None,
+        "rounding_unit": None,
+    }
+    unspecified = normalize_review_rounding(mode="unspecified")
+    assert unspecified["rounding_mode"] == "unspecified"
+    assert rounding_rule_from_review_hint(
+        {"mode": "unspecified"}, contract_unit="C"
+    ) == (None, "rounding_unspecified")
+    filled = normalize_review_rounding(mode="half_up", increment="1", unit="c")
+    assert filled == {
+        "rounding_mode": "half_up",
+        "rounding_increment": "1",
+        "rounding_unit": "C",
+    }
+    with pytest.raises(RoundingReviewError, match="rounding_increment required"):
+        normalize_review_rounding(mode="half_up")
+    with pytest.raises(RoundingReviewError, match="rounding_mode required"):
+        normalize_review_rounding(increment="1")
+    rule, source = rounding_rule_from_review_hint(
+        {"mode": "half_up", "increment": "1", "unit": "C"},
+        contract_unit="C",
+    )
+    assert source == "rules_review"
+    assert rule is not None
+    assert rule.mode == "half_up"
+    assert rule.increment == D(1)
 
 
 def test_kmia_interval_uses_rounding_not_raw_threshold() -> None:

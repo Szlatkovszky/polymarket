@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS rules_reviews (
   expected_resolution TEXT,
   expected_settlement_source TEXT,
   paper_model_version TEXT,
+  rounding_mode TEXT,
+  rounding_increment TEXT,
+  rounding_unit TEXT,
   reviewer TEXT NOT NULL,
   reviewed_at TEXT NOT NULL,
   notes TEXT
@@ -255,6 +258,12 @@ class Store:
             )
         if "paper_model_version" not in review_cols:
             self.conn.execute("ALTER TABLE rules_reviews ADD COLUMN paper_model_version TEXT")
+        if "rounding_mode" not in review_cols:
+            self.conn.execute("ALTER TABLE rules_reviews ADD COLUMN rounding_mode TEXT")
+        if "rounding_increment" not in review_cols:
+            self.conn.execute("ALTER TABLE rules_reviews ADD COLUMN rounding_increment TEXT")
+        if "rounding_unit" not in review_cols:
+            self.conn.execute("ALTER TABLE rules_reviews ADD COLUMN rounding_unit TEXT")
         est_cols = {
             row[1] for row in self.conn.execute("PRAGMA table_info(research_estimates)")
         }
@@ -446,8 +455,9 @@ class Store:
             INSERT INTO rules_reviews(
               market_id, rules_hash, cluster_id, trading_cutoff,
               expected_resolution, expected_settlement_source, paper_model_version,
+              rounding_mode, rounding_increment, rounding_unit,
               reviewer, reviewed_at, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(market_id) DO UPDATE SET
               rules_hash = excluded.rules_hash,
               cluster_id = excluded.cluster_id,
@@ -455,6 +465,9 @@ class Store:
               expected_resolution = excluded.expected_resolution,
               expected_settlement_source = excluded.expected_settlement_source,
               paper_model_version = excluded.paper_model_version,
+              rounding_mode = excluded.rounding_mode,
+              rounding_increment = excluded.rounding_increment,
+              rounding_unit = excluded.rounding_unit,
               reviewer = excluded.reviewer,
               reviewed_at = excluded.reviewed_at,
               notes = excluded.notes
@@ -467,6 +480,9 @@ class Store:
                 expected_resolution,
                 expected_settlement,
                 row.get("paper_model_version") or None,
+                row.get("rounding_mode") or None,
+                row.get("rounding_increment") or None,
+                row.get("rounding_unit") or None,
                 row["reviewer"],
                 row["reviewed_at"],
                 row.get("notes"),

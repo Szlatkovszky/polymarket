@@ -63,6 +63,32 @@
         }
       ]
     },
+    "RJTT": {
+      "timezone": "Asia/Tokyo",
+      "forecasts": [
+        {
+          "issued_at": "2026-09-15T10:00:00+00:00",
+          "available_at": "2026-09-15T10:00:00+00:00",
+          "model_run": "gfs-2026-09-15T06:00:00Z",
+          "valid_date_local": "2026-09-16",
+          "predicted_max_c": 24.2,
+          "horizon_hours": 18,
+          "url": "https://api.weather.gov/stations/RJTT/forecasts/gfs-2026-09-15T06:00:00Z"
+        }
+      ],
+      "observations": [
+        {
+          "id": "rjtt-2026-09-15T11:00Z",
+          "observed_at": "2026-09-15T11:00:00+00:00",
+          "temperature_c": 22.0,
+          "daily_max_c": null,
+          "daily_min_c": null,
+          "max_min_fields_present": false,
+          "series_complete_for_local_date": false,
+          "url": "https://api.weather.gov/stations/RJTT/observations/rjtt-2026-09-15T11:00Z"
+        }
+      ]
+    },
     "KABC": {
       "timezone": "America/New_York",
       "forecasts": [
@@ -95,6 +121,11 @@
       "0-24": 1.4,
       "24-48": 1.9,
       "48-72": 2.3
+    },
+    "RJTT": {
+      "0-24": 1.6,
+      "24-48": 2.1,
+      "48-72": 2.5
     }
   },
   "unmeasured_prior_sigma_c": 2.0,
