@@ -136,8 +136,15 @@ python -m research_lab weather-forecast --market-id 900004 \
 ```
 
 Optional live NWS GET (`WEATHER_DATA_SOURCE=network` and `NWS_ALLOW_NETWORK=1`)
-still cannot place orders. If the contract names a different resolution provider,
-the specialist ABSTAINs instead of swapping in NWS.
+still cannot place orders. US stations (KLGA and other ICAO in the NWS domain)
+map `properties.forecast` / `/points` gridpoint periods to `predicted_max` for
+the station-local date, with `generatedAt`/`updateTime` as the vintage
+(`available_at` must be `<= as_of`). `NWS_DEFAULT_SIGMA_C` (default 1.5 C) is an
+**uncalibrated** research scale so the specialist is not blocked on
+`missing_error_scale`. Stations outside the NWS domain (HTTP 404, e.g. Tokyo
+RJTT) ABSTAIN. Incomplete observations are still never treated as official
+daily max. If the contract names a different resolution provider, the
+specialist ABSTAINs instead of swapping in NWS.
 
 This path does **not** claim profitability. Identity calibration and Normal tails
 are known limitations; Kapu B (forward paper data) is a **measurement path**,

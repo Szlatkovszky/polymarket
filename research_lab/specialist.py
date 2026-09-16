@@ -23,6 +23,7 @@ from research_lab.weather_math import (
 )
 from research_lab.weather_source import (
     FixtureNWS,
+    NetworkNWS,
     WeatherSourceError,
     WeatherSnapshot,
     build_weather_source,
@@ -145,7 +146,7 @@ class WeatherStationBaseline:
 
     def __init__(
         self,
-        source: FixtureNWS | None = None,
+        source: FixtureNWS | NetworkNWS | None = None,
         *,
         calibrator: IdentityCalibrator | None = None,
         budget: ResearchBudget | None = None,
