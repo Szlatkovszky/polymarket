@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Polymarket Research Lab — PAPER status</title>
+  <style>
+    :root { --ink:#14232d; --muted:#526477; --line:#d9e0e5; --bg:#edf1f2; --paper:#fff; --accent:#236957; --warn:#92400e; --warnbg:#fef3c7; }
+    * { box-sizing:border-box; }
+    body { margin:0; font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--ink); background:var(--bg); }
+    .wrap { max-width:920px; margin:0 auto; padding:28px 18px 64px; }
+    .banner { background:#14232d; color:#eff8f4; padding:18px 20px; border-radius:10px; }
+    .banner strong { color:#d1f0e1; }
+    h1 { font-size:clamp(26px,4vw,36px); margin:22px 0 8px; line-height:1.15; }
+    .sub { color:var(--muted); margin:0 0 20px; }
+    .warn { background:var(--warnbg); color:var(--warn); padding:14px 16px; border-radius:10px; margin:0 0 22px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:22px; }
+    .card { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+    .card .label { font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); }
+    .card .value { font-size:22px; font-weight:650; margin-top:6px; font-variant-numeric:tabular-nums; }
+    .card .value.false { color:#b45309; }
+    table { width:100%; border-collapse:collapse; background:var(--paper); border:1px solid var(--line); border-radius:10px; overflow:hidden; font-size:14px; }
+    th, td { padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { background:#eaf0ef; font-size:12px; color:var(--muted); }
+    h2 { font-size:18px; margin:28px 0 12px; }
+    a { color:var(--accent); }
+    code { background:#edf1f4; padding:2px 6px; border-radius:4px; font-size:13px; }
+    footer { margin-top:28px; font-size:12px; color:var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="banner"><strong>PAPER mode</strong> — csak szimuláció. Élő kereskedés, tárca és automatikus élesítés ki van kapcsolva.</div>
+    <h1>Polymarket Research Lab</h1>
+    <p class="sub">Nyilvános státusz-dashboard · frissítve: <span id="updated">2026-09-16 08:34 CEST</span> (Europe/Budapest)</p>
+    <div class="warn"><strong>Nincs igazolt edge.</strong> A számok paper/demo könyvelés, nem élő P&amp;L, és nem indokolnak CLOB adaptert.</div>
+    <div class="grid">
+      <div class="card"><div class="label">Cash</div><div class="value">9992.602000</div></div>
+      <div class="card"><div class="label">Marked equity</div><div class="value">9999.285920</div></div>
+      <div class="card"><div class="label">Peak equity</div><div class="value">10000.000000</div></div>
+      <div class="card"><div class="label">Risk</div><div class="value">risk-v2</div></div>
+      <div class="card"><div class="label">Edge proven</div><div class="value false">false</div></div>
+      <div class="card"><div class="label">Live trading</div><div class="value false">off</div></div>
+    </div>
+
+    <h2>Nyitott paper pozíciók</h2>
+    <table>
+      <thead><tr><th>ID</th><th>Market</th><th>Side</th><th>Shares</th><th>Avg</th><th>Fee</th><th>Status</th><th>Opened (UTC)</th></tr></thead>
+      <tbody id="positions"></tbody>
+    </table>
+
+    <h2>Paper fills</h2>
+    <table>
+      <thead><tr><th>ID</th><th>Market</th><th>Side</th><th>Token</th><th>Shares</th><th>Price</th><th>Fee</th><th>Filled (UTC)</th></tr></thead>
+      <tbody id="fills"></tbody>
+    </table>
+
+    <h2>Döntések (összesítés)</h2>
+    <table>
+      <thead><tr><th>Action</th><th>Reason</th><th>Count</th></tr></thead>
+      <tbody id="decisions"></tbody>
+    </table>
+
+    <footer>
+      Forrásrepo: <a href="https://github.com/Szlatkovszky/polymarket">https://github.com/Szlatkovszky/polymarket</a>
+      · Ez a GitHub Pages snapshot a <code>docs/</code> mappából.
+      · A helyi élő API továbbra is <code>http://127.0.0.1:8000</code> a lab gépen.
+    </footer>
+  </div>
+  <script id="state" type="application/json">{"updated_at": "2026-09-16 08:34 CEST", "mode": "PAPER", "cash": "9992.602000", "equity": "9999.285920", "peak_equity": "10000.000000", "paused": false, "risk_version": "risk-v2", "edge_proven": false, "live_trading": false, "positions": [{"id": 1, "market_id": "900004", "forecast_id": "wxbl-077226b70f6f3b2885198387", "token_side": "NO", "token_id": "tok-no-900004", "shares": "16.00", "avg_price": "0.45", "entry_fee": "0.198000", "cluster_id": "weather-kmia-daily-max", "opened_at": "2026-09-15T20:46:39.046644+00:00", "status": "OPEN", "closed_at": null, "settle_payoff": null, "settle_source": null}], "fills": [{"id": 1, "position_id": 1, "forecast_id": "wxbl-077226b70f6f3b2885198387", "market_id": "900004", "side": "BUY", "token_side": "NO", "token_id": "tok-no-900004", "shares": "16.00", "avg_price": "0.45", "fee": "0.198000", "notional": "7.200000", "book_id": 56, "filled_at": "2026-09-15T20:46:39.046644+00:00"}], "decision_counts": [{"action": "ABSTAIN", "reason": "missing_local_date", "c": 5}, {"action": "ABSTAIN", "reason": "resolution_source_mismatch", "c": 5}, {"action": "PROPOSE", "reason": "weather_station_baseline", "c": 5}, {"action": "NO_TRADE", "reason": "stale_book", "c": 2}, {"action": "BUY", "reason": "paper_fok_fill", "c": 1}, {"action": "NO_TRADE", "reason": "expired_forecast", "c": 1}], "repo": "https://github.com/Szlatkovszky/polymarket"}</script>
+  <script>
+    const s = JSON.parse(document.getElementById('state').textContent);
+    const esc = (x) => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+    document.getElementById('positions').innerHTML = (s.positions||[]).map(p =>
+      `<tr><td>${esc(p.id)}</td><td><code>${esc(p.market_id)}</code><br/><small>${esc(p.cluster_id||'')}</small></td><td>${esc(p.token_side)}</td><td>${esc(p.shares)}</td><td>${esc(p.avg_price)}</td><td>${esc(p.entry_fee)}</td><td>${esc(p.status)}</td><td>${esc(p.opened_at)}</td></tr>`
+    ).join('') || '<tr><td colspan="8">Nincs nyitott pozíció</td></tr>';
+    document.getElementById('fills').innerHTML = (s.fills||[]).map(f =>
+      `<tr><td>${esc(f.id)}</td><td><code>${esc(f.market_id)}</code></td><td>${esc(f.side)}</td><td>${esc(f.token_side)}</td><td>${esc(f.shares)}</td><td>${esc(f.avg_price)}</td><td>${esc(f.fee)}</td><td>${esc(f.filled_at)}</td></tr>`
+    ).join('') || '<tr><td colspan="8">Nincs fill</td></tr>';
+    document.getElementById('decisions').innerHTML = (s.decision_counts||[]).map(d =>
+      `<tr><td>${esc(d.action)}</td><td>${esc(d.reason)}</td><td>${esc(d.c)}</td></tr>`
+    ).join('') || '<tr><td colspan="3">Nincs adat</td></tr>';
+  </script>
+</body>
+</html>
