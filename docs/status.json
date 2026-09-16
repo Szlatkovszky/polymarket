@@ -1,0 +1,79 @@
+{
+  "updated_at": "2026-09-16 08:34 CEST",
+  "mode": "PAPER",
+  "cash": "9992.602000",
+  "equity": "9999.285920",
+  "peak_equity": "10000.000000",
+  "paused": false,
+  "risk_version": "risk-v2",
+  "edge_proven": false,
+  "live_trading": false,
+  "positions": [
+    {
+      "id": 1,
+      "market_id": "900004",
+      "forecast_id": "wxbl-077226b70f6f3b2885198387",
+      "token_side": "NO",
+      "token_id": "tok-no-900004",
+      "shares": "16.00",
+      "avg_price": "0.45",
+      "entry_fee": "0.198000",
+      "cluster_id": "weather-kmia-daily-max",
+      "opened_at": "2026-09-15T20:46:39.046644+00:00",
+      "status": "OPEN",
+      "closed_at": null,
+      "settle_payoff": null,
+      "settle_source": null
+    }
+  ],
+  "fills": [
+    {
+      "id": 1,
+      "position_id": 1,
+      "forecast_id": "wxbl-077226b70f6f3b2885198387",
+      "market_id": "900004",
+      "side": "BUY",
+      "token_side": "NO",
+      "token_id": "tok-no-900004",
+      "shares": "16.00",
+      "avg_price": "0.45",
+      "fee": "0.198000",
+      "notional": "7.200000",
+      "book_id": 56,
+      "filled_at": "2026-09-15T20:46:39.046644+00:00"
+    }
+  ],
+  "decision_counts": [
+    {
+      "action": "ABSTAIN",
+      "reason": "missing_local_date",
+      "c": 5
+    },
+    {
+      "action": "ABSTAIN",
+      "reason": "resolution_source_mismatch",
+      "c": 5
+    },
+    {
+      "action": "PROPOSE",
+      "reason": "weather_station_baseline",
+      "c": 5
+    },
+    {
+      "action": "NO_TRADE",
+      "reason": "stale_book",
+      "c": 2
+    },
+    {
+      "action": "BUY",
+      "reason": "paper_fok_fill",
+      "c": 1
+    },
+    {
+      "action": "NO_TRADE",
+      "reason": "expired_forecast",
+      "c": 1
+    }
+  ],
+  "repo": "https://github.com/Szlatkovszky/polymarket"
+}
