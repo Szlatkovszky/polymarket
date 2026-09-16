@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-16 08:51 CEST",
+  "updated_at": "2026-09-16 09:02 CEST",
   "mode": "PAPER",
   "cash": "9992.602000",
   "equity": "9999.285920",
@@ -65,6 +65,11 @@
       "c": 2
     },
     {
+      "action": "ABSTAIN",
+      "reason": "rounding_unspecified",
+      "c": 1
+    },
+    {
       "action": "BUY",
       "reason": "paper_fok_fill",
       "c": 1
@@ -77,74 +82,11 @@
   ],
   "repo": "https://github.com/Szlatkovszky/polymarket",
   "last_run": {
-    "kind": "live_weather_scan",
+    "kind": "live_weather_scan_after_pr5",
+    "weather_like": 50,
+    "parse_ok": 17,
     "new_paper_fills": 0,
-    "candidates_ingested": 7,
-    "note": "Live city daily-high markets found (Tokyo/Seoul/HK). Specialist ABSTAIN: parser expects fixture station wording; real contracts use site=ICAO in NWS URL. Parser upgrade in progress.",
-    "candidates": [
-      {
-        "market_id": "4547124",
-        "question": "Will the highest temperature in Tokyo be 19°C or below on September 16?",
-        "weather_like": true,
-        "parse_ok": false,
-        "reason": "missing_station",
-        "resolution_source": "https://www.weather.gov/wrh/timeseries?site=rjtt",
-        "action": "ABSTAIN"
-      },
-      {
-        "market_id": "4547129",
-        "question": "Will the highest temperature in Tokyo be 24°C on September 16?",
-        "weather_like": true,
-        "parse_ok": false,
-        "reason": "missing_station",
-        "resolution_source": "https://www.weather.gov/wrh/timeseries?site=rjtt",
-        "action": "ABSTAIN"
-      },
-      {
-        "market_id": "4547130",
-        "question": "Will the highest temperature in Tokyo be 25°C on September 16?",
-        "weather_like": true,
-        "parse_ok": false,
-        "reason": "missing_station",
-        "resolution_source": "https://www.weather.gov/wrh/timeseries?site=rjtt",
-        "action": "ABSTAIN"
-      },
-      {
-        "market_id": "4547058",
-        "question": "Will the highest temperature in Seoul (Incheon) be 22°C or below on September 16?",
-        "weather_like": true,
-        "parse_ok": false,
-        "reason": "missing_station",
-        "resolution_source": "https://www.weather.gov/wrh/timeseries?site=rksi",
-        "action": "ABSTAIN"
-      },
-      {
-        "market_id": "4547062",
-        "question": "Will the highest temperature in Seoul (Incheon) be 26°C on September 16?",
-        "weather_like": true,
-        "parse_ok": false,
-        "reason": "missing_station",
-        "resolution_source": "https://www.weather.gov/wrh/timeseries?site=rksi",
-        "action": "ABSTAIN"
-      },
-      {
-        "market_id": "4547135",
-        "question": "Will the highest temperature in Hong Kong be 25°C or below on September 16?",
-        "weather_like": true,
-        "parse_ok": false,
-        "reason": "missing_station",
-        "resolution_source": null,
-        "action": "ABSTAIN"
-      },
-      {
-        "market_id": "4547140",
-        "question": "Will the highest temperature in Hong Kong be 30°C on September 16?",
-        "weather_like": true,
-        "parse_ok": false,
-        "reason": "missing_station",
-        "resolution_source": null,
-        "action": "ABSTAIN"
-      }
-    ]
+    "markets_in_db": 26,
+    "note": "PR5 parser OK: 17/50 weather-like parse_ok (Tokyo/Miami…). Specialist still ABSTAIN (rounding_unspecified) until rules-review can set rounding. Still only 1 OPEN paper fill (KMIA fixture)."
   }
 }
