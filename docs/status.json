@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-16 09:02 CEST",
+  "updated_at": "2026-09-16 09:13 CEST",
   "mode": "PAPER",
   "cash": "9992.602000",
   "equity": "9999.285920",
@@ -60,14 +60,19 @@
       "c": 5
     },
     {
-      "action": "NO_TRADE",
-      "reason": "stale_book",
-      "c": 2
+      "action": "ABSTAIN",
+      "reason": "no_vintage_available",
+      "c": 3
     },
     {
       "action": "ABSTAIN",
-      "reason": "rounding_unspecified",
-      "c": 1
+      "reason": "weather_source_error",
+      "c": 3
+    },
+    {
+      "action": "NO_TRADE",
+      "reason": "stale_book",
+      "c": 2
     },
     {
       "action": "BUY",
@@ -82,11 +87,8 @@
   ],
   "repo": "https://github.com/Szlatkovszky/polymarket",
   "last_run": {
-    "kind": "live_weather_scan_after_pr5",
-    "weather_like": 50,
-    "parse_ok": 17,
+    "kind": "post_pr6_nyc_attempt",
     "new_paper_fills": 0,
-    "markets_in_db": 26,
-    "note": "PR5 parser OK: 17/50 weather-like parse_ok (Tokyo/Miami…). Specialist still ABSTAIN (rounding_unspecified) until rules-review can set rounding. Still only 1 OPEN paper fill (KMIA fixture)."
+    "note": "PR6 merged: rounding review works (Tokyo+NYC reviewed half_up). NYC KLGA forecasts ABSTAIN no_vintage_available because NetworkNWS does not yet map api.weather.gov forecast→predicted max. NWS forecast vintage PR in flight. Still 1 OPEN KMIA fixture fill."
   }
 }
