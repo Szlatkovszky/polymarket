@@ -27,7 +27,9 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
 - GET-only Gamma/CLOB adapters; default **fixtures**; network GET behind
   `POLYMARKET_DATA_SOURCE=network` **and** `POLYMARKET_ALLOW_NETWORK=1`
 - **Weather-like discovery** (keyword / station / specialist-parse filter) then
-  ingest of matching markets only; non-weather fixtures stay out of that path
+  ingest of matching markets only; non-weather fixtures stay out of that path.
+  Network mode uses Gamma `public-search` (not top `/markets`) so NOAA city
+  daily-high contracts can be found. Fixtures remain the CI default.
 - **Weather station/date baseline** (`WeatherStationBaseline`): target is the
   contract resolution quantity (station + local date + rounding), not city weather.
   Interval probs `F(b)-F(a)` under a Normal error model with rounding/boundary
@@ -67,7 +69,7 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
 
 | Item | Now measurable in-repo | Still missing |
 |---|---|---|
-| Weather-like market discovery | Fixture classify + ingest; optional live Gamma GET behind explicit flags | Real-schema soak, tag coverage, rate-limit behavior in production |
+| Weather-like market discovery | Fixture classify + ingest; network discover uses Gamma `public-search` behind explicit flags | Real-schema soak, tag coverage, rate-limit behavior in production |
 | Raw GET archive | Append-only `raw_archive` + market `raw_json` + book snapshots + `rules_hash` | Retention policy; recorded live corpus separate from CI fixtures |
 | Human rules review | CLI `show-rules` / `rules-review` + `GET /api/markets/{id}` + HTTP POST | Exception handling, rule-change watcher, cutoff-timezone UI |
 | PAPER model authorize | `--authorize-model` / `POST /api/models/authorize`; per-review pin | Statistical qualification (explicitly not this flag) |

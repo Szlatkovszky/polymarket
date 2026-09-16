@@ -120,7 +120,13 @@ def test_abstain_missing_station(tmp_path: Path) -> None:
     req = ResearchRequest(
         **{
             **req.__dict__,
-            "rules_text": req.rules_text.replace("station KMIA", "the airport"),
+            "rules_text": (
+                req.rules_text.replace("station KMIA", "the airport").replace(
+                    "https://api.weather.gov/stations/KMIA",
+                    "https://api.weather.gov/stations",
+                )
+            ),
+            "resolution_source": "https://api.weather.gov/stations",
         }
     )
     est = WeatherStationBaseline().estimate(req)
@@ -142,7 +148,12 @@ def test_point_in_time_fixture_is_not_daily_max(tmp_path: Path) -> None:
     req = _request_for_market(lab, "900001")
     est = WeatherStationBaseline().estimate(req)
     assert est.status == "ABSTAIN"
-    assert est.reason in {"quantity_not_daily_max", "missing_local_date", "resolution_source_mismatch"}
+    assert est.reason in {
+        "quantity_not_daily_max",
+        "missing_local_date",
+        "missing_timezone",
+        "resolution_source_mismatch",
+    }
 
 
 def test_rules_hint_mismatch_abstain(tmp_path: Path) -> None:

@@ -22,6 +22,14 @@ FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
 GAMMA_HOSTS = frozenset({"gamma-api.polymarket.com"})
 CLOB_HOSTS = frozenset({"clob.polymarket.com", "clob-staging.polymarket.com"})
 
+# Top GET /markets is politics-heavy. Weather city dailies are found via search.
+WEATHER_SEARCH_QUERIES: tuple[str, ...] = (
+    "highest temperature",
+    "daily maximum temperature",
+    "NOAA temperature",
+)
+MAX_SEARCH_PAGES = 8
+
 
 class AdapterError(RuntimeError):
     pass
@@ -49,7 +57,7 @@ class FixtureGamma:
         self.path = path or (FIXTURE_DIR / "gamma_markets.json")
         self._markets = json.loads(self.path.read_text(encoding="utf-8"))
 
-    def list_markets(self, limit: int = 20) -> list[dict[str, Any]]:
+    def list_markets(self, limit: int = 20, **_kwargs: Any) -> list[dict[str, Any]]:
         return list(self._markets[:limit])
 
     def get_market(self, market_id: str) -> dict[str, Any]:
@@ -116,18 +124,26 @@ class NetworkGamma:
         _assert_host(self.base_url, GAMMA_HOSTS)
         self.timeout = timeout
 
-    def list_markets(self, limit: int = 20) -> list[dict[str, Any]]:
-        payload = _http_get(
-            urljoin(self.base_url + "/", "markets"),
-            params={"limit": str(min(limit, 100)), "closed": "false"},
-            allowed_hosts=GAMMA_HOSTS,
-            timeout=self.timeout,
-        )
-        if isinstance(payload, list):
-            return payload
-        if isinstance(payload, dict) and "markets" in payload:
-            return list(payload["markets"])
-        raise AdapterError("unexpected Gamma list payload")
+    def list_markets(self, limit: int = 20, **_kwargs: Any) -> list[dict[str, Any]]:
+        """Weather discovery via ``GET /public-search``, not top ``/markets``.
+
+        Catalog ``/markets`` is politics-first. City daily-high contracts are
+        found by keyword search + pagination. Still GET-only; never places orders.
+        """
+
+        cap = max(1, min(int(limit), 200))
+        found: dict[str, dict[str, Any]] = {}
+        for query in WEATHER_SEARCH_QUERIES:
+            _collect_search_markets(
+                base_url=self.base_url,
+                query=query,
+                timeout=self.timeout,
+                found=found,
+                cap=cap,
+            )
+            if len(found) >= cap:
+                break
+        return list(found.values())[:cap]
 
     def get_market(self, market_id: str) -> dict[str, Any]:
         payload = _http_get(
@@ -183,6 +199,74 @@ def build_adapters() -> tuple[FixtureGamma | NetworkGamma, FixtureClob | Network
     if source == "network":
         return NetworkGamma(), NetworkClob()
     return FixtureGamma(), FixtureClob()
+
+
+def markets_from_search_payload(payload: Any) -> list[dict[str, Any]]:
+    """Flatten Gamma ``/public-search`` events[].markets (and top-level markets)."""
+
+    if isinstance(payload, list):
+        return [row for row in payload if isinstance(row, dict)]
+    if not isinstance(payload, dict):
+        raise AdapterError("unexpected Gamma search payload")
+    rows: list[dict[str, Any]] = []
+    top = payload.get("markets")
+    if isinstance(top, list):
+        rows.extend(row for row in top if isinstance(row, dict))
+    for event in payload.get("events") or []:
+        if not isinstance(event, dict):
+            continue
+        nested = event.get("markets")
+        if isinstance(nested, list):
+            rows.extend(row for row in nested if isinstance(row, dict))
+    return rows
+
+
+def search_payload_has_more(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    pagination = payload.get("pagination") or {}
+    if isinstance(pagination, dict) and "hasMore" in pagination:
+        return bool(pagination.get("hasMore"))
+    return False
+
+
+def _collect_search_markets(
+    *,
+    base_url: str,
+    query: str,
+    timeout: float,
+    found: dict[str, dict[str, Any]],
+    cap: int,
+) -> None:
+    page = 1
+    while len(found) < cap and page <= MAX_SEARCH_PAGES:
+        payload = _http_get(
+            urljoin(base_url + "/", "public-search"),
+            params={
+                "q": query,
+                "limit_per_type": str(min(50, max(cap, 5))),
+                "page": str(page),
+                "search_tags": "false",
+                "search_profiles": "false",
+            },
+            allowed_hosts=GAMMA_HOSTS,
+            timeout=timeout,
+        )
+        rows = markets_from_search_payload(payload)
+        new_rows = 0
+        for row in rows:
+            market_id = str(row.get("id") or "").strip()
+            if not market_id or market_id in found:
+                continue
+            found[market_id] = row
+            new_rows += 1
+            if len(found) >= cap:
+                return
+        if not rows or not search_payload_has_more(payload):
+            return
+        if new_rows == 0:
+            return
+        page += 1
 
 
 def _assert_host(url: str, allowed: frozenset[str]) -> None:

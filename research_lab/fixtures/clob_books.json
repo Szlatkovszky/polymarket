@@ -141,5 +141,77 @@
     "tick_size": "0.01",
     "neg_risk": false,
     "last_trade_price": "0.50"
+  },
+  "tok-yes-900006": {
+    "market": "0xfixturecondition900006",
+    "asset_id": "tok-yes-900006",
+    "timestamp": "1789473600000",
+    "hash": "fixture-book-yes-900006",
+    "bids": [{ "price": "0.49", "size": "50" }],
+    "asks": [{ "price": "0.51", "size": "50" }],
+    "min_order_size": "1",
+    "tick_size": "0.01",
+    "neg_risk": false,
+    "last_trade_price": "0.50"
+  },
+  "tok-no-900006": {
+    "market": "0xfixturecondition900006",
+    "asset_id": "tok-no-900006",
+    "timestamp": "1789473600000",
+    "hash": "fixture-book-no-900006",
+    "bids": [{ "price": "0.49", "size": "50" }],
+    "asks": [{ "price": "0.51", "size": "50" }],
+    "min_order_size": "1",
+    "tick_size": "0.01",
+    "neg_risk": false,
+    "last_trade_price": "0.50"
+  },
+  "tok-yes-900007": {
+    "market": "0xfixturecondition900007",
+    "asset_id": "tok-yes-900007",
+    "timestamp": "1789473600000",
+    "hash": "fixture-book-yes-900007",
+    "bids": [{ "price": "0.49", "size": "50" }],
+    "asks": [{ "price": "0.51", "size": "50" }],
+    "min_order_size": "1",
+    "tick_size": "0.01",
+    "neg_risk": false,
+    "last_trade_price": "0.50"
+  },
+  "tok-no-900007": {
+    "market": "0xfixturecondition900007",
+    "asset_id": "tok-no-900007",
+    "timestamp": "1789473600000",
+    "hash": "fixture-book-no-900007",
+    "bids": [{ "price": "0.49", "size": "50" }],
+    "asks": [{ "price": "0.51", "size": "50" }],
+    "min_order_size": "1",
+    "tick_size": "0.01",
+    "neg_risk": false,
+    "last_trade_price": "0.50"
+  },
+  "tok-yes-900008": {
+    "market": "0xfixturecondition900008",
+    "asset_id": "tok-yes-900008",
+    "timestamp": "1789473600000",
+    "hash": "fixture-book-yes-900008",
+    "bids": [{ "price": "0.49", "size": "50" }],
+    "asks": [{ "price": "0.51", "size": "50" }],
+    "min_order_size": "1",
+    "tick_size": "0.01",
+    "neg_risk": false,
+    "last_trade_price": "0.50"
+  },
+  "tok-no-900008": {
+    "market": "0xfixturecondition900008",
+    "asset_id": "tok-no-900008",
+    "timestamp": "1789473600000",
+    "hash": "fixture-book-no-900008",
+    "bids": [{ "price": "0.49", "size": "50" }],
+    "asks": [{ "price": "0.51", "size": "50" }],
+    "min_order_size": "1",
+    "tick_size": "0.01",
+    "neg_risk": false,
+    "last_trade_price": "0.50"
   }
 }
