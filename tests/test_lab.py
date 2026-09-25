@@ -578,8 +578,20 @@ def test_fixture_import_buy_at_wall_clock_without_patching_json(tmp_path: Path) 
         clock=SystemUTCClock(),
     )
     lab.ingest_markets()
-    _prepare_tradeable(lab)
+    market = lab.store.get_market("900001")
+    assert market is not None
     now = lab.now()
+    # Keep the review cutoff after the lab clock so a later wall-clock run
+    # still exercises a fresh-book BUY.
+    lab.review_rules(
+        market_id="900001",
+        rules_hash=market.rules_hash,
+        cluster_id="fixture-weather",
+        trading_cutoff=isoformat_utc(now + timedelta(days=1)),
+        reviewer="test",
+        expected_resolution="manual fixture settle",
+    )
+    lab.authorize_model(MODEL, "paper-use only")
     result = lab.import_forecast(
         _forecast(
             lab,
