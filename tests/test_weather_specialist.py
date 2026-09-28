@@ -443,7 +443,7 @@ def test_network_nws_klga_fixture_maps_forecast_and_default_sigma(
     unofficial = unofficial_series_max_c(snap.observations)
     assert unofficial == D("22.2")
     assert "gridpoints/OKX/37,46/forecast/hourly" not in calls
-    assert any(path.startswith("points/") for path in calls)
+    assert "points/40.7792,-73.88" in calls
 
 
 def test_network_nws_look_ahead_generated_at_drops_vintage(

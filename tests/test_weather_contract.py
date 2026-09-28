@@ -365,3 +365,141 @@ def test_network_gamma_discover_uses_public_search(
         "900007",
     }
     assert all(row.specialist_parse_ok for row in classified)
+
+
+def _live_noaa_city_rules(
+    *,
+    city: str,
+    place: str,
+    site: str,
+    threshold: str,
+    day_phrase: str = "September 25",
+    abbrev: str = "25 Sep '26",
+    end: str = "2026-09-25T12:00:00Z",
+) -> str:
+    """Rules shaped like a live Polymarket NOAA daily-high market. Offline only."""
+
+    return (
+        f"Will the highest temperature in {city} be {threshold} on {day_phrase}?\n"
+        "This market will resolve to the temperature range that contains the highest "
+        f"temperature recorded by NOAA at the {place} in degrees Celsius on {abbrev}.\n"
+        "The resolution source for this market will be information from NOAA, "
+        'specifically the highest reading under the "Temp" column for all times on '
+        f"this day, available here: https://www.weather.gov/wrh/timeseries?site={site}\n"
+        "The resolution source for this market measures temperatures to whole degrees "
+        "Celsius (eg, 9°C).\n"
+        f"{end}"
+    )
+
+
+def test_parse_london_city_airport_from_live_rules() -> None:
+    text = _live_noaa_city_rules(
+        city="London",
+        place="London City Airport Station",
+        site="eglc",
+        threshold="22°C or below",
+    )
+    parsed = parse_weather_contract(
+        rules_text=text,
+        rules_hash="1" * 64,
+        resolution_source="https://www.weather.gov/wrh/timeseries?site=eglc",
+    )
+    assert parsed.ok, parsed.reason
+    assert parsed.contract is not None
+    assert parsed.contract.station_id == "EGLC"
+    assert parsed.contract.timezone == "Europe/London"
+    assert parsed.contract.local_date == "2026-09-25"
+    assert parsed.contract.event_id == "le_22c"
+    assert parsed.contract.rounding.mode == "unspecified"
+    assert parsed.details["timezone_source"] == "station_metadata"
+
+
+def test_parse_busan_gimhae_from_live_rules() -> None:
+    text = _live_noaa_city_rules(
+        city="Busan",
+        place="Gimhae Intl Airport Station",
+        site="rkpk",
+        threshold="20°C or below",
+    )
+    parsed = parse_weather_contract(
+        rules_text=text,
+        rules_hash="2" * 64,
+        resolution_source="https://www.weather.gov/wrh/timeseries?site=rkpk",
+    )
+    assert parsed.ok, parsed.reason
+    assert parsed.contract is not None
+    assert parsed.contract.station_id == "RKPK"
+    assert parsed.contract.timezone == "Asia/Seoul"
+    assert parsed.contract.local_date == "2026-09-25"
+    assert parsed.contract.event_id == "le_20c"
+    assert parsed.contract.rounding.mode == "unspecified"
+
+
+@pytest.mark.parametrize(
+    ("city", "place", "site", "timezone"),
+    [
+        ("Paris", "Paris-Le Bourget Airport Station", "lfpb", "Europe/Paris"),
+        ("Ankara", "Esenboğa Intl Airport Station", "ltac", "Europe/Istanbul"),
+        ("Wellington", "Wellington Intl Airport Station", "nzwn", "Pacific/Auckland"),
+        ("Wuhan", "Wuhan Tianhe International Airport Station", "zhhh", "Asia/Shanghai"),
+        ("Shanghai", "Shanghai Pudong International Airport Station", "zspd", "Asia/Shanghai"),
+        ("Tel Aviv", "Ben Gurion International Airport", "LLBG", "Asia/Jerusalem"),
+    ],
+)
+def test_parse_verified_live_city_stations(
+    city: str, place: str, site: str, timezone: str
+) -> None:
+    text = _live_noaa_city_rules(
+        city=city,
+        place=place,
+        site=site,
+        threshold="24°C",
+    )
+    parsed = parse_weather_contract(
+        rules_text=text,
+        rules_hash="3" * 64,
+        resolution_source=f"https://www.weather.gov/wrh/timeseries?site={site}",
+    )
+    assert parsed.ok, parsed.reason
+    assert parsed.contract is not None
+    assert parsed.contract.station_id == site.upper()
+    assert parsed.contract.timezone == timezone
+    assert parsed.contract.event_id == "eq_24c"
+
+
+def test_tel_aviv_without_resolution_source_field_is_not_missing_timezone() -> None:
+    text = _live_noaa_city_rules(
+        city="Tel Aviv",
+        place="Ben Gurion International Airport",
+        site="LLBG",
+        threshold="26°C or below",
+    )
+    parsed = parse_weather_contract(
+        rules_text=text,
+        rules_hash="4" * 64,
+        resolution_source=None,
+    )
+    assert parsed.ok is False
+    assert parsed.reason == "missing_resolution_source"
+
+
+def test_hong_kong_observatory_rules_abstain_missing_station() -> None:
+    text = (
+        "Will the highest temperature in Hong Kong be 25°C or below on September 25?\n"
+        "This market will resolve to the temperature range that contains the highest "
+        "temperature recorded by the Hong Kong Observatory in degrees Celsius on 25 Sep '26.\n"
+        "The resolution source for this market will be information from the Hong Kong "
+        'Observatory, specifically the "Absolute Daily Max (deg. C)" the specified date '
+        "once information is finalized in the relevant \"Daily Extract\", available here: "
+        "https://www.weather.gov.hk/en/cis/climat.htm\n"
+        "The resolution source for this market measures temperatures in Celsius to one "
+        "decimal place (eg, 9.1°C).\n"
+        "2026-09-25T12:00:00Z"
+    )
+    parsed = parse_weather_contract(
+        rules_text=text,
+        rules_hash="5" * 64,
+        resolution_source="https://www.weather.gov.hk/en/cis/climat.htm",
+    )
+    assert parsed.ok is False
+    assert parsed.reason == "missing_station"

@@ -15,6 +15,10 @@ Caveats encoded here (NWS services docs):
 - Stations outside the NWS domain (HTTP 404, e.g. RJTT) are missing_station.
 - The live API returns the current document only. If generatedAt/updateTime
   is after research as_of, there is no usable vintage (no look-ahead).
+- ``/points/{lat},{lon}`` is rounded to 4 decimal places (trailing zeros
+  stripped). Extra station precision makes api.weather.gov answer 301.
+- ``_nws_http_get`` follows at most 3 same-host HTTPS redirects and rejects
+  any off-host Location.
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urljoin, urlparse
@@ -639,7 +643,14 @@ def _is_http_404(exc: BaseException) -> bool:
 
 
 def _nws_coord(value: Any) -> str:
-    text = format(D(value), "f")
+    """Round to 4 decimal places and strip trailing zeros.
+
+    api.weather.gov 301s ``/points/40.77917,-73.88`` to
+    ``/points/40.7792,-73.88``. Requesting the rounded form avoids that hop.
+    """
+
+    quantized = D(value).quantize(D("0.0001"), rounding=ROUND_HALF_UP)
+    text = format(quantized, "f")
     if "." in text:
         text = text.rstrip("0").rstrip(".")
     return text or "0"
@@ -865,17 +876,87 @@ def _assert_nws_host(url: str) -> None:
         raise WeatherSourceError(f"refusing host {host!r}; allowed={sorted(NWS_HOSTS)}")
 
 
-def _nws_http_get(url: str, *, timeout: float) -> Any:
-    _assert_nws_host(url)
-    parsed = urlparse(url)
-    if parsed.scheme != "https":
-        raise WeatherSourceError("NWS adapter is HTTPS GET only")
-    headers = {
-        "User-Agent": "PolymarketResearchLab/0.1 (PAPER; research-lab; no live trading)",
-        "Accept": "application/geo+json, application/json",
-    }
+_NWS_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+_MAX_NWS_REDIRECTS = 3
+_NWS_HTTP_HEADERS = {
+    "User-Agent": "PolymarketResearchLab/0.1 (PAPER; research-lab; no live trading)",
+    "Accept": "application/geo+json, application/json",
+}
+
+
+def _location_header(headers: Mapping[str, str]) -> str:
+    for key, value in headers.items():
+        if str(key).lower() == "location":
+            return str(value).strip()
+    return ""
+
+
+def _nws_get_following_redirects(
+    url: str,
+    *,
+    timeout: float,
+    http_get: Callable[..., Any],
+) -> Any:
+    """GET ``url``, following at most 3 same-host HTTPS redirects.
+
+    ``http_get`` performs one request and must not follow redirects itself.
+    Every hop is checked with ``_assert_nws_host``. A Location whose host
+    differs from the current request is an error and is not fetched.
+    """
+
+    current = url
+    for hop in range(_MAX_NWS_REDIRECTS + 1):
+        _assert_nws_host(current)
+        if urlparse(current).scheme != "https":
+            raise WeatherSourceError("NWS adapter is HTTPS GET only")
+        response = http_get(current, timeout=timeout)
+        status = int(response.status_code)
+        if status in _NWS_REDIRECT_STATUSES:
+            if hop == _MAX_NWS_REDIRECTS:
+                raise WeatherSourceError(
+                    f"GET {url} -> too many redirects ({_MAX_NWS_REDIRECTS})"
+                )
+            location = _location_header(response.headers)
+            if not location:
+                raise WeatherSourceError(f"GET {current} -> {status} missing Location")
+            nxt = urljoin(current, location)
+            cur_host = (urlparse(current).hostname or "").lower()
+            nxt_parsed = urlparse(nxt)
+            nxt_host = (nxt_parsed.hostname or "").lower()
+            if nxt_host != cur_host:
+                raise WeatherSourceError(
+                    f"refusing off-host redirect {cur_host!r} -> {nxt_host!r}"
+                )
+            _assert_nws_host(nxt)
+            if nxt_parsed.scheme != "https":
+                raise WeatherSourceError("NWS adapter is HTTPS GET only")
+            current = nxt
+            continue
+        if status != 200:
+            raise WeatherSourceError(f"GET {current} -> {status}")
+        return response.json()
+    raise WeatherSourceError(f"GET {url} -> too many redirects ({_MAX_NWS_REDIRECTS})")
+
+
+def _nws_http_get(
+    url: str,
+    *,
+    timeout: float,
+    http_get: Callable[..., Any] | None = None,
+) -> Any:
+    """HTTPS GET against an NWS host. Does not let httpx follow redirects.
+
+    ``http_get``, when passed, is one hop (recorded fixture or test double).
+    It must return an object with ``status_code``, ``headers``, and ``json``.
+    """
+
+    if http_get is not None:
+        return _nws_get_following_redirects(url, timeout=timeout, http_get=http_get)
+
     with httpx.Client(timeout=timeout, follow_redirects=False) as client:
-        response = client.get(url, headers=headers)
-    if response.status_code != 200:
-        raise WeatherSourceError(f"GET {url} -> {response.status_code}")
-    return response.json()
+
+        def _once(next_url: str, *, timeout: float) -> Any:
+            del timeout
+            return client.get(next_url, headers=_NWS_HTTP_HEADERS)
+
+        return _nws_get_following_redirects(url, timeout=timeout, http_get=_once)

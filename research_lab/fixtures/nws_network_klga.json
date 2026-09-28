@@ -35,8 +35,8 @@
         }
       ]
     },
-    "points/40.77917,-73.88": {
-      "id": "https://api.weather.gov/points/40.77917,-73.88",
+    "points/40.7792,-73.88": {
+      "id": "https://api.weather.gov/points/40.7792,-73.88",
       "type": "Feature",
       "properties": {
         "gridId": "OKX",
