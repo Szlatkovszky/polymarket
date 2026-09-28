@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -91,6 +91,10 @@ class PaperRunBody(BaseModel):
     limit: int | None = None
     max_markets: int | None = None
     ingest: bool = True
+    market_ids: list[str] | None = None
+    min_event_date: str | None = None
+    city: str | None = None
+    station: str | None = None
 
 
 def _mode() -> str:
@@ -182,9 +186,23 @@ def create_app(lab: Lab | None = None) -> FastAPI:
         return {"ingested": ids, "source": getattr(current().gamma, "source_name", "unknown")}
 
     @app.post("/api/discover")
-    def discover(limit: int | None = None, ingest: bool = True) -> dict[str, Any]:
+    def discover(
+        limit: int | None = None,
+        ingest: bool = True,
+        market_id: list[str] | None = Query(default=None),
+        min_event_date: str | None = None,
+        city: str | None = None,
+        station: str | None = None,
+    ) -> dict[str, Any]:
         try:
-            return current().discover_weather_markets(limit=limit, ingest=ingest)
+            return current().discover_weather_markets(
+                limit=limit,
+                ingest=ingest,
+                market_ids=market_id,
+                min_event_date=min_event_date,
+                city=city,
+                station=station,
+            )
         except LabError as exc:
             raise HTTPException(400, str(exc)) from exc
 
@@ -465,6 +483,10 @@ def create_app(lab: Lab | None = None) -> FastAPI:
                     discover_limit=payload.limit,
                     ingest=payload.ingest,
                     max_markets=payload.max_markets,
+                    market_ids=tuple(payload.market_ids) if payload.market_ids else None,
+                    min_event_date=payload.min_event_date,
+                    city=payload.city,
+                    station=payload.station,
                 ),
             )
         except LabError as exc:

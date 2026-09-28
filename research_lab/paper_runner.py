@@ -12,6 +12,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from research_lab.adapters import AdapterError
+from research_lab.discovery import adapter_skip_reason
 from research_lab.lab import Lab, LabError
 from research_lab.research_budget import ResearchBudgetError
 from research_lab.specialist import WEATHER_MODEL_VERSION
@@ -31,6 +33,10 @@ class PaperRunConfig:
     discover_limit: int | None = None
     ingest: bool = True
     max_markets: int | None = None
+    market_ids: tuple[str, ...] | None = None
+    min_event_date: str | None = None
+    city: str | None = None
+    station: str | None = None
     model_version: str = WEATHER_MODEL_VERSION
 
 
@@ -77,7 +83,14 @@ def _run_one_cycle(lab: Lab, cfg: PaperRunConfig, *, cycle_index: int) -> dict[s
 
     try:
         lab.research_budget.note_call(reason="gamma_list", network=network)
-        discovery = lab.discover_weather_markets(limit=cfg.discover_limit, ingest=cfg.ingest)
+        discovery = lab.discover_weather_markets(
+            limit=cfg.discover_limit,
+            ingest=cfg.ingest,
+            market_ids=cfg.market_ids,
+            min_event_date=cfg.min_event_date,
+            city=cfg.city,
+            station=cfg.station,
+        )
     except ResearchBudgetError as exc:
         lab.store.insert_paper_run(
             {
@@ -98,6 +111,27 @@ def _run_one_cycle(lab: Lab, cfg: PaperRunConfig, *, cycle_index: int) -> dict[s
             "discovery": None,
             "error": str(exc),
         }
+    except AdapterError as exc:
+        reason = adapter_skip_reason(exc)
+        lab.store.insert_paper_run(
+            {
+                "cycle_id": cycle_id,
+                "market_id": None,
+                "as_of": cfg.as_of,
+                "action": "REFUSE",
+                "reason": reason,
+                "details": {"error": str(exc)},
+                "created_at": created,
+            }
+        )
+        return {
+            "cycle_id": cycle_id,
+            "action": "REFUSE",
+            "reason": reason,
+            "markets": [],
+            "discovery": None,
+            "error": str(exc),
+        }
 
     lab.store.insert_paper_run(
         {
@@ -109,13 +143,20 @@ def _run_one_cycle(lab: Lab, cfg: PaperRunConfig, *, cycle_index: int) -> dict[s
             "details": {
                 "weather_like_ids": discovery["weather_like_ids"],
                 "ingested": discovery["ingested"],
+                "skipped": discovery.get("skipped") or [],
+                "skipped_counts": discovery.get("skipped_counts") or {},
                 "source": discovery["source"],
             },
             "created_at": created,
         }
     )
 
-    market_ids = list(discovery["weather_like_ids"])
+    # Forecast only markets that actually have a book snapshot. A skipped
+    # 404 must not abort the cycle or be treated as ingested.
+    if cfg.ingest:
+        market_ids = list(discovery["ingested"])
+    else:
+        market_ids = list(discovery["weather_like_ids"])
     if cfg.max_markets is not None:
         market_ids = market_ids[: max(0, cfg.max_markets)]
 
@@ -132,6 +173,8 @@ def _run_one_cycle(lab: Lab, cfg: PaperRunConfig, *, cycle_index: int) -> dict[s
         "discovery": {
             "weather_like_ids": discovery["weather_like_ids"],
             "ingested": discovery["ingested"],
+            "skipped": discovery.get("skipped") or [],
+            "skipped_counts": discovery.get("skipped_counts") or {},
         },
         "markets": rows,
         "auto_settle": False,
@@ -187,6 +230,27 @@ def _process_market(
                 "as_of": as_of,
                 "action": "REFUSE",
                 "reason": "lab_error",
+                "details": row,
+                "created_at": created,
+            }
+        )
+        return row
+    except AdapterError as exc:
+        reason = adapter_skip_reason(exc)
+        row = {
+            "market_id": market_id,
+            "action": "REFUSE",
+            "reason": reason,
+            "imported": False,
+            "error": str(exc),
+        }
+        lab.store.insert_paper_run(
+            {
+                "cycle_id": cycle_id,
+                "market_id": market_id,
+                "as_of": as_of,
+                "action": "REFUSE",
+                "reason": reason,
                 "details": row,
                 "created_at": created,
             }

@@ -76,9 +76,14 @@ export POLYMARKET_ALLOW_NETWORK=1
 
 This still cannot place orders. Treat responses as untrusted market data.
 
-Network `discover` uses Gamma `GET /public-search?q=...` (weather keywords +
-pagination). Top `GET /markets` is politics-first and will miss city daily-high
-contracts. Fixture classify remains the CI default.
+Network `discover` pages Gamma `GET /public-search` (weather keywords) and
+then `GET /events` and `GET /markets` with `active=true&closed=false` plus
+offset. Closed or non-tradable rows (`active`, `closed`, `acceptingOrders`,
+and `enableOrderBook` when present) are counted and not ingested. A missing
+CLOB book skips that market and the run continues. `--market-id` (repeatable)
+ingests one Gamma id through the same path. `--min-event-date` defaults, on
+network, to today in the station timezone. `--city` / `--station` narrow the
+list. Fixture classify remains the CI default. No live orders.
 
 ## Import a valid forecast envelope
 
@@ -175,6 +180,9 @@ export NWS_ALLOW_NETWORK=0
 
 # 1. Discover weather-like markets; persist raw archive + meta + books + rules_hash
 python -m research_lab discover --data-dir data
+# One Gamma id, or a city still open today (network date floor is station-local today):
+# python -m research_lab discover --market-id 900004 --data-dir data
+# python -m research_lab discover --city NYC --station KLGA --data-dir data
 
 # 2. Human rules review (exact logged hash, cluster, cutoff, settlement source)
 python -m research_lab show-rules --market-id 900004 --data-dir data
@@ -203,6 +211,9 @@ python -m research_lab paper-run --as-of 2026-09-15T12:00:00+00:00 --data-dir da
 # Optional: import PROPOSE envelopes through risk-v2 after review + authorize
 python -m research_lab paper-run --import-paper --as-of 2026-09-15T12:00:00+00:00 \
   --cluster-id kmia-station-date --data-dir data
+
+# Public Pages snapshot from the PAPER sqlite file (read-only; edge_proven false)
+python -m research_lab publish-status --data-dir data --docs-dir docs
 ```
 
 Without a matching rules review, risk-v2 still refuses positions

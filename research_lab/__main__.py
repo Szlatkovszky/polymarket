@@ -1,4 +1,4 @@
-"""CLI: research-lab serve | discover | rules-review | paper-run | weather-forecast.
+"""CLI: research-lab serve | discover | rules-review | paper-run | publish-status | weather-forecast.
 
 PAPER/DEMO only. No live/wallet/settle-from-runner flags.
 """
@@ -52,6 +52,29 @@ def main() -> None:
         default=os.environ.get("LAB_DATA_DIR", "data"),
     )
     discover.add_argument("--limit", type=int, default=None)
+    discover.add_argument(
+        "--market-id",
+        action="append",
+        dest="market_ids",
+        default=None,
+        help="Gamma market id to ingest (repeatable). Same parse/classify/persist path.",
+    )
+    discover.add_argument(
+        "--min-event-date",
+        default=None,
+        help="Keep markets whose event date is on or after YYYY-MM-DD. "
+        "Network discovery defaults to today in the station timezone when omitted.",
+    )
+    discover.add_argument(
+        "--city",
+        default=None,
+        help="Optional city filter (e.g. NYC, Miami, Atlanta, Chicago, Seattle).",
+    )
+    discover.add_argument(
+        "--station",
+        default=None,
+        help="Optional ICAO/station filter (e.g. KLGA, KMIA).",
+    )
     discover.add_argument(
         "--no-ingest",
         action="store_true",
@@ -151,6 +174,16 @@ def main() -> None:
     paper.add_argument("--cluster-id", default=None)
     paper.add_argument("--limit", type=int, default=None)
     paper.add_argument("--max-markets", type=int, default=None)
+    paper.add_argument(
+        "--market-id",
+        action="append",
+        dest="market_ids",
+        default=None,
+        help="Gamma market id (repeatable). Passed through the robust discover path.",
+    )
+    paper.add_argument("--min-event-date", default=None)
+    paper.add_argument("--city", default=None)
+    paper.add_argument("--station", default=None)
 
     replay = sub.add_parser(
         "replay-estimate",
@@ -160,6 +193,25 @@ def main() -> None:
     replay.add_argument(
         "--data-dir",
         default=os.environ.get("LAB_DATA_DIR", "data"),
+    )
+
+    publish = sub.add_parser(
+        "publish-status",
+        help="Regenerate docs/index.html and docs/status.json from the PAPER db (read-only)",
+    )
+    publish.add_argument(
+        "--data-dir",
+        default=os.environ.get("LAB_DATA_DIR", "data"),
+    )
+    publish.add_argument(
+        "--db",
+        default=None,
+        help="PAPER sqlite path. Default: <data-dir>/paper.sqlite",
+    )
+    publish.add_argument(
+        "--docs-dir",
+        default="docs",
+        help="Directory for index.html and status.json",
     )
 
     args = parser.parse_args()
@@ -192,6 +244,9 @@ def main() -> None:
         return
     if args.cmd == "replay-estimate":
         _replay(args)
+        return
+    if args.cmd == "publish-status":
+        _publish_status(args)
         return
 
 
@@ -229,7 +284,14 @@ def _weather_forecast(args: argparse.Namespace) -> None:
 
 def _discover(args: argparse.Namespace) -> None:
     lab = _prepare_lab(args.data_dir)
-    result = lab.discover_weather_markets(limit=args.limit, ingest=not args.no_ingest)
+    result = lab.discover_weather_markets(
+        limit=args.limit,
+        ingest=not args.no_ingest,
+        market_ids=args.market_ids,
+        min_event_date=args.min_event_date,
+        city=args.city,
+        station=args.station,
+    )
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
@@ -302,9 +364,24 @@ def _paper_run(args: argparse.Namespace) -> None:
             as_of=args.as_of,
             discover_limit=args.limit,
             max_markets=args.max_markets,
+            market_ids=tuple(args.market_ids) if args.market_ids else None,
+            min_event_date=args.min_event_date,
+            city=args.city,
+            station=args.station,
         ),
     )
     print(json.dumps(result, indent=2, sort_keys=True, default=str))
+
+
+def _publish_status(args: argparse.Namespace) -> None:
+    from research_lab.publish_status import PublishError, publish_public_status
+
+    db_path = Path(args.db) if args.db else Path(args.data_dir) / "paper.sqlite"
+    try:
+        result = publish_public_status(db_path=db_path, docs_dir=Path(args.docs_dir))
+    except PublishError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(json.dumps(result, indent=2, sort_keys=True))
 
 
 def _replay(args: argparse.Namespace) -> None:
