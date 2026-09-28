@@ -13,8 +13,9 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
 - **`risk-v2`** on 10k sim equity: trade 0.5%, market 1%, cluster 2%, open 10%,
   daily stop 1.5%, DD stop 5%; min edge 0.03; band 0.10–0.90; max spread 0.03;
   ≤20% depth; book ≤5s; forecast ≤6h; settlement ≤14d; ≤20 entries/day
-- Taker fee `size×fee_rate×price×(1−price)` from **`feesEnabled` + `feeSchedule`**;
-  unknown/unsupported exponent → no position. Reserves 0.002 ops + 0.002 slippage
+- Taker fee `size×fee_rate×(price×(1−price))^exponent` from **`feesEnabled` + `feeSchedule`**
+  (exponents 1 and 2; https://docs.polymarket.com/trading/fees). Unknown/unsupported
+  exponent → no position. Maker rebates are not credited. Reserves 0.002 ops + 0.002 slippage
   per share are **assumptions**
 - YES+NO gap logged as **diagnostic only** (`tradeable: false`); never an auto-trade
 - Simulated FOK, fee rounded up, Decimal cash, SQLite fill/cash/position transaction

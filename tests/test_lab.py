@@ -29,7 +29,7 @@ from research_lab.evaluation import (
     ops_cost_adjusted_pnl,
     settled_yes_outcome,
 )
-from research_lab.fees import parse_market_fee_rate
+from research_lab.fees import parse_market_fee_rate, parse_market_fee_schedule
 from research_lab.forecast import ForecastValidationError, validate_forecast_dict
 from research_lab.hashing import rules_hash_from_text
 from research_lab.lab import (
@@ -459,8 +459,27 @@ def test_risk_v2_defaults() -> None:
 def test_fee_schedule_and_unknown() -> None:
     gamma = FixtureGamma()
     assert parse_market_fee_rate(gamma.get_market("900001")) == D("0.05")
+    fixture_fee = parse_market_fee_schedule(gamma.get_market("900001"))
+    assert fixture_fee is not None and fixture_fee.exponent == 2
     assert parse_market_fee_rate(gamma.get_market("900002")) is None
-    assert parse_market_fee_rate({"feesEnabled": True, "feeSchedule": {"rate": 0.05, "exponent": 1}}) is None
+    weather = {
+        "feesEnabled": True,
+        "feeType": "weather_fees",
+        "feeSchedule": {
+            "exponent": 1,
+            "rate": "0.05",
+            "takerOnly": True,
+            "rebateRate": "0.25",
+        },
+    }
+    parsed = parse_market_fee_schedule(weather)
+    assert parsed is not None
+    assert parsed.rate == D("0.05")
+    assert parsed.exponent == 1
+    assert parsed.taker_only is True
+    assert parsed.rebate_rate == D("0.25")
+    assert parse_market_fee_rate({"feesEnabled": True, "feeSchedule": {"rate": 0.05, "exponent": 3}}) is None
+    assert parse_market_fee_rate({"feesEnabled": True, "feeSchedule": {"rate": 0.05}}) is None
     assert parse_market_fee_rate({"feesEnabled": False}) == D(0)
 
 

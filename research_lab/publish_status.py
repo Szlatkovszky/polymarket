@@ -144,7 +144,16 @@ def _mark_equity(
         )
         rate_s = book_row["fee_rate"]
         fee_rate = D(rate_s) if rate_s not in (None, "") else None
-        fill = simulate_fok(book, side="SELL", shares=D(pos["shares"]), fee_rate=fee_rate)
+        exponent = 1
+        if "fee_exponent" in book_row.keys() and book_row["fee_exponent"] not in (None, ""):
+            exponent = int(book_row["fee_exponent"])
+        fill = simulate_fok(
+            book,
+            side="SELL",
+            shares=D(pos["shares"]),
+            fee_rate=fee_rate,
+            fee_exponent=exponent,
+        )
         if not fill.filled:
             complete = False
             continue

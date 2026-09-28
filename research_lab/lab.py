@@ -25,7 +25,7 @@ from research_lab.core import (
     evaluate_entry_gates,
     load_risk,
 )
-from research_lab.fees import parse_market_fee_rate
+from research_lab.fees import SUPPORTED_FEE_EXPONENTS, parse_market_fee_schedule
 from research_lab.forecast import ForecastValidationError, ValidatedForecast, validate_forecast_dict
 from research_lab.discovery import (
     adapter_skip_reason,
@@ -122,6 +122,28 @@ class FokFill:
     reason: str
 
 
+def _stored_fee_exponent(row: Any) -> int:
+    """Exponent saved with the book.
+
+    Rows written before ``fee_exponent`` existed were charged with the
+    exponent-1 curve (``p × (1 − p)``). A corrupt value is negative so the
+    loader treats the fee as unknown.
+    """
+
+    keys = row.keys() if hasattr(row, "keys") else ()
+    if "fee_exponent" not in keys:
+        return 1
+    stored = row["fee_exponent"]
+    if stored in (None, ""):
+        return 1
+    if isinstance(stored, bool):
+        return -1
+    try:
+        return int(stored)
+    except (TypeError, ValueError):
+        return -1
+
+
 def simulate_fok(
     book: OrderBook,
     *,
@@ -129,8 +151,14 @@ def simulate_fok(
     shares: Decimal,
     fee_rate: Decimal | None = None,
     fee_bps: int | None = None,
+    fee_exponent: int = 1,
 ) -> FokFill:
-    """Fill-or-kill across book levels. Partial depth → no fill."""
+    """Fill-or-kill across book levels. Partial depth → no fill.
+
+    ``fee_bps`` is the legacy exponent-1 wrapper (bps/10_000). A Gamma
+    ``feeSchedule`` passes ``fee_rate`` and ``fee_exponent`` together.
+    Maker rebates are not credited.
+    """
 
     qty = q_shares(shares)
     if qty <= 0:
@@ -138,7 +166,7 @@ def simulate_fok(
     rate = fee_rate
     if rate is None and fee_bps is not None:
         rate = D(fee_bps) / D(10_000)
-    if rate is None:
+    if rate is None or fee_exponent not in SUPPORTED_FEE_EXPONENTS:
         return FokFill(False, D(0), D(0), D(0), D(0), (), "unknown_fee")
     if qty < book.min_order_size:
         return FokFill(False, D(0), D(0), D(0), D(0), (), "below_min_order_size")
@@ -162,7 +190,9 @@ def simulate_fok(
         if take <= 0:
             continue
         notional += take * level.price
-        fee_exact += polymarket_taker_fee(size=take, price=level.price, fee_rate=rate)
+        fee_exact += polymarket_taker_fee(
+            size=take, price=level.price, fee_rate=rate, exponent=fee_exponent
+        )
         used.append({"price": str(level.price), "size": str(take)})
         remaining -= take
 
@@ -652,7 +682,9 @@ class Lab:
         else:
             loaded = list(preloaded)
         raw_market = json.loads(market.raw_json)
-        fee_rate = parse_market_fee_rate(raw_market)
+        schedule = parse_market_fee_schedule(raw_market)
+        fee_rate = None if schedule is None else schedule.rate
+        fee_exponent = None if schedule is None else schedule.exponent
         fee_bps = None if fee_rate is None else int((fee_rate * D(10_000)).to_integral_value())
         written = 0
         for side, token_id, book in loaded:
@@ -661,7 +693,14 @@ class Lab:
                 "token_side": side,
                 "mode": self.mode,
                 "fee_rate": None if fee_rate is None else str(fee_rate),
+                "fee_exponent": fee_exponent,
+                "taker_only": None if schedule is None else schedule.taker_only,
+                "rebate_rate": None
+                if schedule is None or schedule.rebate_rate is None
+                else str(schedule.rebate_rate),
+                "rebate_credited": False,
                 "feesEnabled": raw_market.get("feesEnabled"),
+                "feeType": raw_market.get("feeType"),
             }
             self._archive_raw(
                 kind="clob_book",
@@ -680,6 +719,7 @@ class Lab:
                 rules_hash=market.rules_hash,
                 fee_bps=fee_bps,
                 fee_rate=None if fee_rate is None else str(fee_rate),
+                fee_exponent=fee_exponent,
                 meta=meta,
                 captured_at=captured_at,
             )
@@ -1087,8 +1127,10 @@ class Lab:
                 return DecisionRecord("NO_TRADE", "invalid_trading_cutoff")
 
         cluster_id = str(review["cluster_id"]) if review is not None else ""
-        yes_book, yes_fee, yes_book_id, yes_captured = self._load_book(market.yes_token_id)
-        no_book, no_fee, no_book_id, no_captured = self._load_book(market.no_token_id)
+        yes_book, yes_fee, yes_book_id, yes_captured, yes_exp = self._load_book(
+            market.yes_token_id
+        )
+        no_book, no_fee, no_book_id, no_captured, no_exp = self._load_book(market.no_token_id)
         fee_known = yes_fee is not None and no_fee is not None
         gap = yes_no_cross_book_diagnostic(yes_book, no_book)
         account = self._account_view(cluster_id)
@@ -1140,11 +1182,15 @@ class Lab:
             return DecisionRecord("NO_TRADE", "stale_book", details={"yes_no_gap": gap})
 
         reserve = self.risk.per_share_research_reserve()
-        yes_buy = self._sized_buy(yes_book, yes_fee) if yes_book is not None else FokFill(
-            False, D(0), D(0), D(0), D(0), (), "missing_book"
+        yes_buy = (
+            self._sized_buy(yes_book, yes_fee, yes_exp)
+            if yes_book is not None
+            else FokFill(False, D(0), D(0), D(0), D(0), (), "missing_book")
         )
-        no_buy = self._sized_buy(no_book, no_fee) if no_book is not None else FokFill(
-            False, D(0), D(0), D(0), D(0), (), "missing_book"
+        no_buy = (
+            self._sized_buy(no_book, no_fee, no_exp)
+            if no_book is not None
+            else FokFill(False, D(0), D(0), D(0), D(0), (), "missing_book")
         )
 
         def side_ok(book: OrderBook | None, fill: FokFill) -> str | None:
@@ -1280,10 +1326,16 @@ class Lab:
         if pos is None:
             raise LabError("no open position")
         self.refresh_books(market_id)
-        book, fee_rate, book_id, _captured = self._load_book(pos["token_id"])
+        book, fee_rate, book_id, _captured, fee_exponent = self._load_book(pos["token_id"])
         if book is None:
             raise LabError("missing_book")
-        fill = simulate_fok(book, side="SELL", shares=D(pos["shares"]), fee_rate=fee_rate)
+        fill = simulate_fok(
+            book,
+            side="SELL",
+            shares=D(pos["shares"]),
+            fee_rate=fee_rate,
+            fee_exponent=fee_exponent,
+        )
         if not fill.filled:
             raise LabError(f"close_fok_failed:{fill.reason}")
         proceeds = fill.notional - fill.fee
@@ -1386,12 +1438,16 @@ class Lab:
         # Ops ledger is recorded separately from trade cash so we do not double-count
         # the per-trade reserve that was only used for entry gating.
 
-    def _sized_buy(self, book: OrderBook, fee_rate: Decimal | None) -> FokFill:
+    def _sized_buy(
+        self, book: OrderBook, fee_rate: Decimal | None, fee_exponent: int = 1
+    ) -> FokFill:
         depth = ask_depth(book)
         cap = q_shares(depth * self.risk.max_depth_fraction)
         if cap < book.min_order_size or cap < self.risk.min_fill_shares:
             return FokFill(False, D(0), D(0), D(0), D(0), (), "depth_participation")
-        fill = simulate_fok(book, side="BUY", shares=cap, fee_rate=fee_rate)
+        fill = simulate_fok(
+            book, side="BUY", shares=cap, fee_rate=fee_rate, fee_exponent=fee_exponent
+        )
         if not fill.filled:
             return fill
         cash_need = fill.notional + fill.fee
@@ -1406,20 +1462,30 @@ class Lab:
         sized = q_shares(min(cap, max_by_cost))
         if sized < book.min_order_size:
             return FokFill(False, D(0), D(0), D(0), D(0), (), "max_trade_cost")
-        return simulate_fok(book, side="BUY", shares=sized, fee_rate=fee_rate)
+        return simulate_fok(
+            book,
+            side="BUY",
+            shares=sized,
+            fee_rate=fee_rate,
+            fee_exponent=fee_exponent,
+        )
 
     def _load_book(
         self, token_id: str | None
-    ) -> tuple[OrderBook | None, Decimal | None, int | None, str | None]:
+    ) -> tuple[OrderBook | None, Decimal | None, int | None, str | None, int]:
         if not token_id:
-            return None, None, None, None
+            return None, None, None, None, 1
         row = self.store.latest_book(token_id)
         if row is None:
-            return None, None, None, None
+            return None, None, None, None, 1
         book = OrderBook.from_clob(json.loads(row["snapshot_json"]), token_id=token_id)
         rate_s = row["fee_rate"] if "fee_rate" in row.keys() else None
         fee_rate = D(rate_s) if rate_s not in (None, "") else None
-        return book, fee_rate, int(row["id"]), str(row["captured_at"])
+        exponent = _stored_fee_exponent(row)
+        if fee_rate is not None and exponent not in SUPPORTED_FEE_EXPONENTS:
+            fee_rate = None
+        used = exponent if exponent in SUPPORTED_FEE_EXPONENTS else 1
+        return book, fee_rate, int(row["id"]), str(row["captured_at"]), used
 
     def mark_open_positions(self) -> tuple[Decimal, bool]:
         """Exit-depth mark of OPEN inventory. Incomplete marks block new entries."""
@@ -1428,11 +1494,17 @@ class Lab:
         marked = D(0)
         complete = True
         for pos in self.store.list_positions("OPEN"):
-            book, fee_rate, _, _ = self._load_book(pos["token_id"])
+            book, fee_rate, _, _, fee_exponent = self._load_book(pos["token_id"])
             if book is None:
                 complete = False
                 continue
-            fill = simulate_fok(book, side="SELL", shares=D(pos["shares"]), fee_rate=fee_rate)
+            fill = simulate_fok(
+                book,
+                side="SELL",
+                shares=D(pos["shares"]),
+                fee_rate=fee_rate,
+                fee_exponent=fee_exponent,
+            )
             if not fill.filled:
                 complete = False
                 continue

@@ -55,11 +55,21 @@ bindable. `p_L` in the prototype is a conservative scenario, not a 95% CI.
 
 ## Fee model (unknown → NO TRADE)
 
-Documented taker fee: `size × fee_rate × price × (1 − price)`.
-The bot reads **`feesEnabled` + `feeSchedule`** from market metadata (not a baked
-category table). Missing fields or an unsupported exponent → **NO TRADE**.
-`feesEnabled: false` is a known zero rate. Maker fee is documented as zero; that
-is not zero risk. Displayed mid/probability is not a bid.
+Documented taker fee, exponent applied to the price component
+([fees](https://docs.polymarket.com/trading/fees),
+[market details](https://docs.polymarket.com/market-data/market-details)):
+
+`size × fee_rate × (price × (1 − price))^exponent`
+
+Exponent **1** is the printed formula `C × feeRate × p × (1 − p)` and matches
+the weather table (rate `0.05`). Exponent **2** is the same curve squared.
+Any other exponent, or a missing schedule, → **NO TRADE**. The bot reads
+**`feesEnabled` + `feeSchedule`** from market metadata (not a baked category
+table, and not CLOB `GET /fee-rate` `base_fee` basis points).
+`feesEnabled: false` is a known zero rate. Paper fills are taker FOK, so
+`takerOnly` means the fee applies. Maker `rebateRate` is **not** credited.
+Maker fee is documented as zero; that is not zero risk. Displayed
+mid/probability is not a bid. The estimate is rounded **up**.
 
 ## Risk defaults (`risk-v2`, 10k sim equity)
 
