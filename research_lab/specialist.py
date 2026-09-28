@@ -353,7 +353,7 @@ class WeatherStationBaseline:
             f"Predicted max {fc.predicted_max_c} C from {fc.model_run} issued "
             f"{fc.issued_at}, horizon {fc.horizon_hours}h, sigma {snap.sigma_c} C "
             f"({snap.sigma_source}). Interval prob uses Normal F(b)-F(a) after "
-            f"{contract.rounding.mode} rounding to {contract.rounding.increment} C "
+            f"{contract.rounding.mode} rounding to {contract.rounding.increment} {contract.unit} "
             f"(underlying [{ulo_s}, {uhi_s})). "
             "Normal is a starting baseline: tails understate extremes and "
             "regime shifts. Identity calibration stub. Not a profitability claim."

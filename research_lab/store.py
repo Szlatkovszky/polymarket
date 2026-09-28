@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS books (
   rules_hash TEXT NOT NULL,
   fee_bps INTEGER,
   fee_rate TEXT,
+  fee_exponent INTEGER,
   meta_json TEXT NOT NULL,
   captured_at TEXT NOT NULL
 );
@@ -251,6 +252,8 @@ class Store:
         cols = {row[1] for row in self.conn.execute("PRAGMA table_info(books)")}
         if "fee_rate" not in cols:
             self.conn.execute("ALTER TABLE books ADD COLUMN fee_rate TEXT")
+        if "fee_exponent" not in cols:
+            self.conn.execute("ALTER TABLE books ADD COLUMN fee_exponent INTEGER")
         review_cols = {row[1] for row in self.conn.execute("PRAGMA table_info(rules_reviews)")}
         if "expected_settlement_source" not in review_cols:
             self.conn.execute(
@@ -417,13 +420,14 @@ class Store:
         meta: Mapping[str, Any],
         captured_at: str,
         fee_rate: str | None = None,
+        fee_exponent: int | None = None,
     ) -> int:
         cur = self.conn.execute(
             """
             INSERT INTO books(
               market_id, token_id, token_side, snapshot_json, rules_hash,
-              fee_bps, fee_rate, meta_json, captured_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              fee_bps, fee_rate, fee_exponent, meta_json, captured_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 market_id,
@@ -433,6 +437,7 @@ class Store:
                 rules_hash,
                 fee_bps,
                 fee_rate,
+                fee_exponent,
                 json.dumps(meta, sort_keys=True),
                 captured_at,
             ),

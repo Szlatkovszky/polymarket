@@ -46,15 +46,29 @@ def polymarket_taker_fee(
     size: Decimal,
     price: Decimal,
     fee_rate: Decimal,
+    exponent: int = 1,
 ) -> Decimal:
-    """Documented taker fee: size × fee_rate × price × (1 − price).
+    """Taker fee: size × fee_rate × (price × (1 − price))^exponent.
+
+    Exponent 1 is the formula on https://docs.polymarket.com/trading/fees
+    (``fee = C × feeRate × p × (1 − p)``). ``feeSchedule.exponent`` is applied
+    to that price component:
+    https://docs.polymarket.com/market-data/market-details
+    The official CLOB client uses the same curve
+    (``feeRate * (price * (1 - price)) ** feeExponent``).
 
     PAPER estimate only — not a live exchange invoice. Do not use a baked-in
-    category table; the rate must come from ``feesEnabled`` + ``feeSchedule``.
+    category table; the rate and exponent must come from ``feesEnabled`` +
+    ``feeSchedule``. Maker ``rebateRate`` is not subtracted. The caller rounds
+    the sum up; the exchange's 5-decimal rounding can go to zero and would
+    understate paper cost.
     """
+    if isinstance(exponent, bool) or not isinstance(exponent, int) or exponent < 1:
+        raise ValueError("unsupported fee exponent")
     if fee_rate < 0:
         raise ValueError("fee_rate cannot be negative")
-    return size * D(fee_rate) * price * (D(1) - price)
+    curve = price * (D(1) - price)
+    return size * D(fee_rate) * (curve ** exponent)
 
 
 def polymarket_crypto_fee(
@@ -63,7 +77,11 @@ def polymarket_crypto_fee(
     price: Decimal,
     fee_bps: int,
 ) -> Decimal:
-    """Legacy wrapper: ``fee_bps`` / 10_000 as the taker rate."""
+    """Legacy wrapper: ``fee_bps`` / 10_000 as an exponent-1 taker rate.
+
+    ``GET /fee-rate`` ``base_fee`` is basis points, not ``feeSchedule.rate``.
+    The paper gate does not use this wrapper.
+    """
     if fee_bps < 0:
         raise ValueError("fee_bps cannot be negative")
     return polymarket_taker_fee(

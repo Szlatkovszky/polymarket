@@ -260,6 +260,13 @@ class NetworkClob:
         return payload
 
     def get_fee_bps(self, token_id: str) -> int | None:
+        """``GET /fee-rate`` ``base_fee`` in basis points.
+
+        https://docs.polymarket.com/api-reference/market-data/get-fee-rate
+        This is not ``feeSchedule.rate``. The paper gate uses Gamma
+        ``feesEnabled`` + ``feeSchedule`` and does not call this method.
+        """
+
         try:
             payload = _http_get(
                 urljoin(self.base_url + "/", "fee-rate"),

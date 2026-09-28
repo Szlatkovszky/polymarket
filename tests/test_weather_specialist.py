@@ -237,6 +237,33 @@ def test_kmia_estimate_logs_all_variants_and_respects_available_at(tmp_path: Pat
     assert "kmia-2026-09-15T11:50Z" not in obs_ids
     for src in est.diagnostics["sources"]:
         assert parse_utc(src["available_at"]) <= parse_utc(AS_OF)
+    assert "rounding to 0.1 C" in est.diagnostics["thesis"]
+
+
+def test_forecast_summary_uses_contract_rounding_unit(tmp_path: Path) -> None:
+    lab = _lab(tmp_path)
+    req = _request_for_market(lab, "900004")
+    text = req.rules_text.replace("32.0 C", "90 F").replace(
+        "after half-up rounding to 0.1 C",
+        "The resolution source measures temperatures to whole degrees Fahrenheit",
+    )
+    hints = dict(req.specialist_hints)
+    hints["rules_review_rounding"] = {"mode": "half_up", "increment": "1", "unit": "F"}
+    f_req = ResearchRequest(
+        market_id=req.market_id,
+        condition_id=req.condition_id,
+        rules_text=text,
+        rules_hash=rules_hash_from_text(text),
+        as_of=req.as_of,
+        cutoff_at=req.cutoff_at,
+        resolution_source=req.resolution_source,
+        specialist_hints=hints,
+    )
+    est = WeatherStationBaseline().estimate(f_req)
+    assert est.status == "ESTIMATE", est.reason
+    thesis = est.diagnostics["thesis"]
+    assert "rounding to 1 F" in thesis
+    assert "rounding to 1 C" not in thesis
 
 
 def test_missing_max_is_not_zero_and_series_not_invented() -> None:

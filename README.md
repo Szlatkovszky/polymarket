@@ -275,8 +275,28 @@ python -m research_lab replay-estimate --estimate-id 1 --data-dir data
 
 Progress against the átadás table: [`docs/STATUS.md`](docs/STATUS.md).
 
+## Paper taker fee
+
+Gamma `feesEnabled` + `feeSchedule` `{exponent, rate, takerOnly, rebateRate}`:
+
+```text
+fee = C × rate × (p × (1 − p))^exponent
+```
+
+Exponent 1 is the formula on
+[Polymarket fees](https://docs.polymarket.com/trading/fees)
+(`fee = C × feeRate × p × (1 − p)`), which matches that page's weather table
+(rate 0.05). [Market details](https://docs.polymarket.com/market-data/market-details)
+apply `exponent` to that price component. Exponents **1** and **2** are
+accepted. Any other exponent refuses with `unknown_fee`. Paper fills are taker
+FOK, so `takerOnly` means the fee is charged. `rebateRate` is a maker-pool
+fraction and is not credited. The estimate is Decimal and rounded up.
+`GET /fee-rate` returns `base_fee` basis points only
+([fee-rate](https://docs.polymarket.com/api-reference/market-data/get-fee-rate));
+that integer is not `feeSchedule.rate` and is not the paper gate.
+
 ## Honesty
 
 Paper fills are **not** proof a live order would have executed. Unknown fee,
 expired forecast, or missing rules review → no position. Do not enable a live
-adapter from this tree.
+adapter from this tree. `edge_proven` stays false.
