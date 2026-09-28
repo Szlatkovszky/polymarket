@@ -52,6 +52,18 @@ STATION_TIMEZONES: dict[str, str] = {
     "KSEA": "America/Los_Angeles",
     "KSFO": "America/Los_Angeles",
     "KATL": "America/New_York",
+    # Live Polymarket daily-high site= codes from a GET-only Gamma probe of
+    # active "highest temperature" events on 2026-09-25. Hong Kong markets
+    # name the Hong Kong Observatory (weather.gov.hk) and no parseable ICAO,
+    # so they stay missing_station — VHHH is not guessed.
+    "EGLC": "Europe/London",
+    "LFPB": "Europe/Paris",
+    "LLBG": "Asia/Jerusalem",
+    "LTAC": "Europe/Istanbul",
+    "NZWN": "Pacific/Auckland",
+    "RKPK": "Asia/Seoul",
+    "ZHHH": "Asia/Shanghai",
+    "ZSPD": "Asia/Shanghai",
 }
 
 _STATION_RE = re.compile(
