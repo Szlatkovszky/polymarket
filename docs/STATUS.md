@@ -28,8 +28,12 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
   `POLYMARKET_DATA_SOURCE=network` **and** `POLYMARKET_ALLOW_NETWORK=1`
 - **Weather-like discovery** (keyword / station / specialist-parse filter) then
   ingest of matching markets only; non-weather fixtures stay out of that path.
-  Network mode uses Gamma `public-search` (not top `/markets`) so NOAA city
-  daily-high contracts can be found. Fixtures remain the CI default.
+  Network mode pages Gamma `public-search` plus `/events` and `/markets`
+  (`active=true`, `closed=false`, offset). Non-tradable rows and a missing
+  book are skipped per market; the run continues. `--market-id` ingests one
+  Gamma id. Fixtures remain the CI default. `publish-status` rewrites
+  `docs/index.html` and `docs/status.json` from the PAPER db read-only
+  (`edge_proven` stays false).
 - **Weather station/date baseline** (`WeatherStationBaseline`): target is the
   contract resolution quantity (station + local date + rounding), not city weather.
   Interval probs `F(b)-F(a)` under a Normal error model with rounding/boundary

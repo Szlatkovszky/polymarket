@@ -107,14 +107,18 @@ class _RecordedTimestampClob:
         return self._fees.get_fee_bps(token_id)
 
 
-def _prepare_tradeable(lab: Lab, market_id: str = "900001") -> None:
+def _prepare_tradeable(
+    lab: Lab,
+    market_id: str = "900001",
+    trading_cutoff: str = "2026-09-20T12:00:00+00:00",
+) -> None:
     market = lab.store.get_market(market_id)
     assert market is not None
     lab.review_rules(
         market_id=market_id,
         rules_hash=market.rules_hash,
         cluster_id="fixture-weather",
-        trading_cutoff="2026-09-20T12:00:00+00:00",
+        trading_cutoff=trading_cutoff,
         reviewer="test",
         expected_resolution="manual fixture settle",
     )
@@ -582,7 +586,7 @@ def test_fixture_import_buy_at_wall_clock_without_patching_json(tmp_path: Path) 
     assert market is not None
     now = lab.now()
     # Keep the review cutoff after the lab clock so a later wall-clock run
-    # still exercises a fresh-book BUY.
+    # still exercises a fresh-book BUY. The fixture date 2026-09-20 is already past.
     lab.review_rules(
         market_id="900001",
         rules_hash=market.rules_hash,

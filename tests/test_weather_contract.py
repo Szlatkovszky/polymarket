@@ -328,7 +328,8 @@ def test_network_gamma_discover_uses_public_search(
 
     def fake_http_get(url, *, params, allowed_hosts, timeout):  # type: ignore[no-untyped-def]
         calls.append((url, dict(params or {})))
-        assert "public-search" in url
+        if "public-search" not in url:
+            return []
         query = params["q"]
         page = int(params["page"])
         if query != WEATHER_SEARCH_QUERIES[0]:

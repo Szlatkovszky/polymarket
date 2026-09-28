@@ -10,12 +10,14 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from research_lab.adapters import AdapterError
 from research_lab.core import (
     AccountView,
     DEFAULT_RISK_VERSION,
@@ -26,10 +28,12 @@ from research_lab.core import (
 from research_lab.fees import parse_market_fee_rate
 from research_lab.forecast import ForecastValidationError, ValidatedForecast, validate_forecast_dict
 from research_lab.discovery import (
+    adapter_skip_reason,
     classify_weather_market,
-    classify_weather_markets,
     discover_limit_from_env,
+    discovery_skip_reason,
     payload_hash,
+    tradable_skip_reason,
 )
 from research_lab.hashing import rules_hash_from_text, sha256_hex
 from research_lab.money import D, polymarket_taker_fee, q_cash, q_shares, round_fee_up
@@ -53,6 +57,7 @@ from research_lab.weather_pipeline import run_weather_baseline
 from research_lab.weather_source import build_weather_source
 
 ALLOWED_PAYOFFS = (D("0"), D("0.5"), D("1"))
+logger = logging.getLogger(__name__)
 
 
 class LabError(ValueError):
@@ -341,37 +346,131 @@ class Lab:
             captured_at=captured,
         )
         for raw in raw_markets:
+            if tradable_skip_reason(raw):
+                continue
             classified = classify_weather_market(raw)
             if weather_only and not classified.weather_like:
                 continue
-            ids.append(self._persist_ingested_market(raw, classified, captured))
+            try:
+                ids.append(self._persist_ingested_market(raw, classified, captured))
+            except AdapterError as exc:
+                logger.warning(
+                    "skip ingest market %s reason=%s",
+                    raw.get("id"),
+                    adapter_skip_reason(exc),
+                )
         return ids
 
     def discover_weather_markets(
-        self, limit: int | None = None, *, ingest: bool = True
+        self,
+        limit: int | None = None,
+        *,
+        ingest: bool = True,
+        market_ids: Sequence[str] | None = None,
+        min_event_date: str | date | None = None,
+        city: str | None = None,
+        station: str | None = None,
     ) -> dict[str, Any]:
-        """Classify weather-like Gamma rows. Fixture default; network GET is opt-in."""
+        """Classify weather-like Gamma rows. Fixture default; network GET is opt-in.
+
+        Non-tradable rows are counted and not ingested. A per-market book 404
+        skips that market and the run continues. Network discovery keeps paging
+        past closed rows and applies a station-local date floor of today unless
+        ``min_event_date`` is set. Explicit ids use the same persist path and
+        are not date-filtered unless ``min_event_date`` is set.
+        """
 
         cap = limit if limit is not None else discover_limit_from_env()
-        raw_markets = self.gamma.list_markets(limit=cap)
+        parsed_date = _parse_min_event_date(min_event_date)
         captured = isoformat_utc(self.now())
         source = getattr(self.gamma, "source_name", "unknown")
+        network = source == "network"
+        requested_ids = [str(item).strip() for item in (market_ids or []) if str(item).strip()]
+        use_station_today = network and parsed_date is None and not requested_ids
+        if parsed_date is not None:
+            floor_mode = "explicit"
+        elif use_station_today:
+            floor_mode = "station_today"
+        else:
+            floor_mode = "off"
+
+        skipped: list[dict[str, Any]] = []
+        skipped_counts: dict[str, int] = {}
+
+        def record_skip(market_id: str, reason: str, question: str | None) -> None:
+            skipped.append(
+                {"market_id": market_id, "reason": reason, "question": question}
+            )
+            skipped_counts[reason] = skipped_counts.get(reason, 0) + 1
+            logger.warning("skip market %s reason=%s", market_id or "-", reason)
+
+        if requested_ids:
+            raw_markets = self._fetch_markets_by_id(requested_ids, record_skip, network=network)
+            gamma_skips: list[dict[str, Any]] = []
+        else:
+            list_kwargs: dict[str, Any] = {
+                "limit": cap,
+                "min_event_date": parsed_date,
+                "use_station_today": use_station_today,
+                "now": self.now(),
+                "city": city,
+                "station": station,
+            }
+            if network:
+                list_kwargs["on_http"] = self._allow_gamma_http
+            raw_markets = self.gamma.list_markets(**list_kwargs)
+            gamma_skips = list(getattr(self.gamma, "last_discovery_skips", []) or [])
+        for row in gamma_skips:
+            record_skip(
+                str(row.get("market_id") or ""),
+                str(row.get("reason") or "skipped"),
+                None if row.get("question") is None else str(row.get("question")),
+            )
         self._archive_raw(
             kind="gamma_list",
             source=source,
             payload=raw_markets,
             captured_at=captured,
         )
-        classified = classify_weather_markets(raw_markets)
-        ingested: list[str] = []
-        if ingest:
-            for row in classified:
-                if not row.weather_like:
-                    continue
-                ingested.append(self._persist_ingested_market(row.raw, row, captured))
+        classified: list[Any] = []
+        seen_skip_ids = {row["market_id"] for row in skipped if row["market_id"]}
+        for raw in raw_markets:
+            market_id = str(raw.get("id") or raw.get("market_id") or "")
+            question = None if raw.get("question") is None else str(raw.get("question"))
+            if market_id and market_id in seen_skip_ids:
+                continue
+            reason = discovery_skip_reason(
+                raw,
+                now=self.now(),
+                min_event_date=parsed_date,
+                use_station_today=use_station_today,
+                city=city,
+                station=station,
+            )
+            if reason:
+                record_skip(market_id, reason, question)
+                seen_skip_ids.add(market_id)
+                continue
+            row = classify_weather_market(raw)
+            classified.append(row)
+            if not row.weather_like or not ingest:
+                continue
+            try:
+                self._persist_ingested_market(raw, row, captured)
+            except AdapterError as exc:
+                skip = adapter_skip_reason(exc)
+                record_skip(row.market_id, skip, row.question)
+                continue
+        ingested = [
+            row.market_id
+            for row in classified
+            if row.weather_like and row.market_id not in {item["market_id"] for item in skipped}
+        ]
+        if not ingest:
+            ingested = []
         return {
             "source": source,
-            "network": source == "network",
+            "network": network,
             "live_orders": False,
             "classified": [
                 {
@@ -388,9 +487,44 @@ class Lab:
             ],
             "weather_like_ids": [row.market_id for row in classified if row.weather_like],
             "ingested": ingested,
+            "skipped": skipped,
+            "skipped_counts": skipped_counts,
+            "event_date_floor": floor_mode,
+            "min_event_date": None if parsed_date is None else parsed_date.isoformat(),
+            "city": city,
+            "station": station,
             "captured_at": captured,
             "edge_proven": False,
         }
+
+    def _allow_gamma_http(self) -> bool:
+        """Charge one research-budget call for a network Gamma GET. False stops paging."""
+
+        from research_lab.research_budget import ResearchBudgetError
+
+        try:
+            self.research_budget.note_call(reason="gamma_get", network=True)
+        except ResearchBudgetError:
+            return False
+        return True
+
+    def _fetch_markets_by_id(
+        self,
+        market_ids: Sequence[str],
+        record_skip: Any,
+        *,
+        network: bool,
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for market_id in market_ids:
+            if network and not self._allow_gamma_http():
+                record_skip(market_id, "research_call_ceiling", None)
+                break
+            try:
+                rows.append(self.gamma.get_market(market_id))
+            except AdapterError as exc:
+                record_skip(market_id, adapter_skip_reason(exc), None)
+        return rows
 
     def _persist_ingested_market(
         self,
@@ -405,32 +539,60 @@ class Lab:
         )
         yes_id, no_id = _token_ids(raw)
         source = getattr(self.gamma, "source_name", "unknown")
-        self.store.upsert_market(
-            {
-                "market_id": market_id,
-                "condition_id": raw.get("conditionId") or raw.get("condition_id"),
-                "question": raw.get("question"),
-                "rules_text": rules_text,
-                "rules_hash": rules_hash,
-                "yes_token_id": yes_id,
-                "no_token_id": no_id,
-                "cutoff_at": raw.get("endDate") or raw.get("end_date"),
-                "timezone": "UTC",
-                "resolution_source": raw.get("resolutionSource") or raw.get("resolution_source"),
-                "raw_json": json.dumps(raw, sort_keys=True),
-                "ingested_at": captured,
-            }
-        )
-        self._archive_raw(
-            kind="gamma_market",
-            source=source,
-            payload=dict(raw),
-            market_id=market_id,
-            rules_hash=rules_hash,
-            captured_at=captured,
-        )
-        self._snapshot_books(market_id, yes_id, no_id, captured)
+        # Books are fetched before any market write so a 404 cannot leave a row.
+        preloaded = self._fetch_book_payloads(yes_id, no_id)
+        self.store.begin()
+        try:
+            self.store.upsert_market(
+                {
+                    "market_id": market_id,
+                    "condition_id": raw.get("conditionId") or raw.get("condition_id"),
+                    "question": raw.get("question"),
+                    "rules_text": rules_text,
+                    "rules_hash": rules_hash,
+                    "yes_token_id": yes_id,
+                    "no_token_id": no_id,
+                    "cutoff_at": raw.get("endDate") or raw.get("end_date"),
+                    "timezone": "UTC",
+                    "resolution_source": raw.get("resolutionSource") or raw.get("resolution_source"),
+                    "raw_json": json.dumps(raw, sort_keys=True),
+                    "ingested_at": captured,
+                }
+            )
+            self._archive_raw(
+                kind="gamma_market",
+                source=source,
+                payload=dict(raw),
+                market_id=market_id,
+                rules_hash=rules_hash,
+                captured_at=captured,
+            )
+            written = self._snapshot_books(
+                market_id,
+                yes_id,
+                no_id,
+                captured,
+                preloaded=preloaded,
+            )
+            if written < 1:
+                raise AdapterError("missing orderbook tokens")
+            self.store.commit()
+        except Exception:
+            self.store.rollback()
+            raise
         return market_id
+
+    def _fetch_book_payloads(
+        self, yes_id: str | None, no_id: str | None
+    ) -> list[tuple[str, str, dict[str, Any]]]:
+        loaded: list[tuple[str, str, dict[str, Any]]] = []
+        for side, token_id in (("YES", yes_id), ("NO", no_id)):
+            if not token_id:
+                continue
+            loaded.append((side, token_id, self.clob.get_book(token_id)))
+        if not loaded:
+            raise AdapterError("missing orderbook tokens")
+        return loaded
 
     def _archive_raw(
         self,
@@ -475,17 +637,25 @@ class Lab:
         yes_id: str | None,
         no_id: str | None,
         captured_at: str,
-    ) -> None:
+        *,
+        preloaded: list[tuple[str, str, dict[str, Any]]] | None = None,
+    ) -> int:
         market = self.store.get_market(market_id)
         if market is None:
-            return
-        for side, token_id in (("YES", yes_id), ("NO", no_id)):
-            if not token_id:
-                continue
-            book = self.clob.get_book(token_id)
-            raw_market = json.loads(market.raw_json)
-            fee_rate = parse_market_fee_rate(raw_market)
-            fee_bps = None if fee_rate is None else int((fee_rate * D(10_000)).to_integral_value())
+            return 0
+        if preloaded is None:
+            loaded: list[tuple[str, str, dict[str, Any]]] = []
+            for side, token_id in (("YES", yes_id), ("NO", no_id)):
+                if not token_id:
+                    continue
+                loaded.append((side, token_id, self.clob.get_book(token_id)))
+        else:
+            loaded = list(preloaded)
+        raw_market = json.loads(market.raw_json)
+        fee_rate = parse_market_fee_rate(raw_market)
+        fee_bps = None if fee_rate is None else int((fee_rate * D(10_000)).to_integral_value())
+        written = 0
+        for side, token_id, book in loaded:
             meta = {
                 "source": getattr(self.clob, "source_name", "unknown"),
                 "token_side": side,
@@ -513,6 +683,8 @@ class Lab:
                 meta=meta,
                 captured_at=captured_at,
             )
+            written += 1
+        return written
 
     def review_rules(
         self,
@@ -1391,6 +1563,17 @@ def _token_ids(raw: Mapping[str, Any]) -> tuple[str | None, str | None]:
     yes = ids[0] if len(ids) > 0 else None
     no = ids[1] if len(ids) > 1 else None
     return yes, no
+
+
+def _parse_min_event_date(value: str | date | None) -> date | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError as exc:
+        raise LabError("min_event_date must be YYYY-MM-DD") from exc
 
 
 def _rules_text(raw: Mapping[str, Any]) -> str:
