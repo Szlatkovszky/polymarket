@@ -1,11 +1,11 @@
 {
   "note": "Form only. Replace rules_hash after ingest. Not a live-edge claim. Generate a real envelope with: python -m research_lab weather-forecast --market-id 900004 --as-of 2026-09-15T12:00:00+00:00",
   "action": "PROPOSE",
-  "model_version": "weather-station-baseline-v1-calibration-identity-stub-v0",
+  "model_version": "weather-station-baseline-v2-same-day-v1-calibration-identity-stub-v0",
   "forecast": {
     "forecast_id": "replace-after-running-weather-forecast",
     "market_id": "900004",
-    "model_version": "weather-station-baseline-v1-calibration-identity-stub-v0",
+    "model_version": "weather-station-baseline-v2-same-day-v1-calibration-identity-stub-v0",
     "rules_hash": "REPLACE_WITH_SHA256_FROM_GET_API_MARKETS_AFTER_INGEST",
     "as_of": "2026-09-15T12:00:00+00:00",
     "expires_at": "2026-09-15T15:00:00+00:00",

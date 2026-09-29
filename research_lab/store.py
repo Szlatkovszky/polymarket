@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping
 
 from research_lab.money import D, q_cash
+from research_lab.timeutil import parse_utc
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -449,6 +450,34 @@ class Store:
             "SELECT * FROM books WHERE token_id = ? ORDER BY id DESC LIMIT 1",
             (token_id,),
         ).fetchone()
+
+    def latest_book_at_or_before(self, token_id: str, as_of: str) -> sqlite3.Row | None:
+        """Newest stored book whose captured_at is at or before ``as_of``.
+
+        A later snapshot must not hide an earlier one, and a snapshot from
+        after ``as_of`` must not be used. Comparison is on parsed instants,
+        not on raw timestamp strings.
+        """
+
+        as_of_dt = parse_utc(as_of)
+        rows = self.conn.execute(
+            "SELECT * FROM books WHERE token_id = ? ORDER BY id DESC",
+            (token_id,),
+        ).fetchall()
+        best: sqlite3.Row | None = None
+        best_key: tuple[object, int] | None = None
+        for row in rows:
+            try:
+                captured = parse_utc(str(row["captured_at"]))
+            except ValueError:
+                continue
+            if captured > as_of_dt:
+                continue
+            key = (captured, int(row["id"]))
+            if best_key is None or key > best_key:
+                best = row
+                best_key = key
+        return best
 
     def insert_rules_review(self, row: Mapping[str, Any]) -> None:
         expected_resolution = row.get("expected_resolution") or ""

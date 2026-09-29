@@ -124,7 +124,7 @@ Then:
 2. Human `POST /api/rules-review` on market `900004` (KMIA daily-max fixture) using
    the logged `rules_hash`.
 3. `POST /api/models/authorize` with
-   `weather-station-baseline-v1-calibration-identity-stub-v0`
+   `weather-station-baseline-v2-same-day-v1-calibration-identity-stub-v0`
    (paper-use flag, not a statistical qualification).
 4. `POST /api/specialist/weather` with
    `{"market_id": "900004", "as_of": "2026-09-15T12:00:00+00:00"}`.
@@ -155,9 +155,25 @@ RJTT) ABSTAIN. Incomplete observations are still never treated as official
 daily max. If the contract names a different resolution provider, the
 specialist ABSTAINs instead of swapping in NWS.
 
+When the event date is **today** in the station timezone, the daily-max
+distribution is left-truncated at the max temperature observed so far
+(`GET /stations/{ICAO}/observations`, `available_at <= as_of`) and the error
+scale shrinks through the local afternoon. That diurnal window is an
+assumption, not a fit. If the observation endpoint is unavailable the
+specialist **ABSTAINs** rather than ignoring the max so far. A successful
+response with no temperature yet is an explicit unconditional fallback. The
+floor is not an official daily max.
+
+Forecast-error sigma by lead time is still the **identity stub**.
+`api.weather.gov` does not archive issued forecasts, and resolution is the
+hourly `Temp` column (whole degrees F), not the gridpoint high. No sigma is
+invented to fill that gap. A day-to-day climatological helper exists and is
+**not** applied to probabilities.
+
 This path does **not** claim profitability. Identity calibration and Normal tails
 are known limitations; Kapu B (forward paper data) is a **measurement path**,
-not a proven edge.
+not a proven edge. Same-day conditioning is not statistical validation and
+does not prove an edge.
 
 ## Kapu B — forward paper collection (still PAPER)
 
@@ -192,7 +208,7 @@ python -m research_lab rules-review --market-id 900004 \
   --trading-cutoff 2026-09-16T22:00:00+00:00 \
   --expected-settlement-source https://api.weather.gov/stations/KMIA \
   --reviewer you \
-  --authorize-model weather-station-baseline-v1-calibration-identity-stub-v0 \
+  --authorize-model weather-station-baseline-v2-same-day-v1-calibration-identity-stub-v0 \
   --data-dir data
 
 # NOAA city daily-high (Tokyo fixture 900006): parser leaves rounding unspecified.
