@@ -51,9 +51,10 @@ from research_lab.timeutil import Clock, SystemUTCClock, isoformat_utc, parse_ut
 from research_lab.weather_math import (
     RoundingReviewError,
     normalize_review_rounding,
+    quantize_prob,
     review_rounding_hint,
 )
-from research_lab.weather_pipeline import run_weather_baseline
+from research_lab.weather_pipeline import comparison_block, run_weather_baseline
 from research_lab.weather_source import build_weather_source
 
 ALLOWED_PAYOFFS = (D("0"), D("0.5"), D("1"))
@@ -68,6 +69,15 @@ class LabError(ValueError):
 class BookLevel:
     price: Decimal
     size: Decimal
+
+
+@dataclass(frozen=True)
+class YesMarketQuote:
+    """YES mid from a book captured at or before as_of. Missing stays None."""
+
+    mid: Decimal | None
+    available_at: str | None
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -856,24 +866,29 @@ class Lab:
         """Paper-use flag only — not a statistical qualification."""
         self.store.authorize_model(model_version, isoformat_utc(self.now()), notes)
 
-    def yes_market_mid(self, market_id: str, *, as_of: str) -> tuple[Decimal | None, str | None]:
-        """Contemporaneous YES mid from a book snapshot with captured_at <= as_of."""
+    def yes_market_quote(self, market_id: str, *, as_of: str) -> YesMarketQuote:
+        """Latest YES book with captured_at <= as_of. Later books are ignored."""
 
         market = self.store.get_market(market_id)
         if market is None or not market.yes_token_id:
-            return None, None
-        as_of_dt = parse_utc(as_of)
-        row = self.store.latest_book(market.yes_token_id)
+            return YesMarketQuote(None, None, "unknown_market")
+        row = self.store.latest_book_at_or_before(market.yes_token_id, as_of)
         if row is None:
-            return None, None
-        captured = parse_utc(row["captured_at"])
-        if captured > as_of_dt:
-            return None, None
-        book = OrderBook.from_clob(json.loads(row["snapshot_json"]), token_id=market.yes_token_id)
+            return YesMarketQuote(None, None, "no_book_at_or_before_as_of")
+        captured = isoformat_utc(parse_utc(str(row["captured_at"])))
+        book = OrderBook.from_clob(
+            json.loads(row["snapshot_json"]), token_id=market.yes_token_id
+        )
         if not book.bids or not book.asks:
-            return None, isoformat_utc(captured)
+            return YesMarketQuote(None, captured, "one_sided_book")
         mid = (book.bids[0].price + book.asks[0].price) / D(2)
-        return mid, isoformat_utc(captured)
+        return YesMarketQuote(mid, captured, "ok")
+
+    def yes_market_mid(self, market_id: str, *, as_of: str) -> tuple[Decimal | None, str | None]:
+        """Contemporaneous YES mid from a book snapshot with captured_at <= as_of."""
+
+        quote = self.yes_market_quote(market_id, as_of=as_of)
+        return quote.mid, quote.available_at
 
     def weather_research_request(
         self, market_id: str, *, as_of: str | None = None
@@ -882,11 +897,13 @@ class Lab:
         if market is None:
             raise LabError(f"unknown market {market_id}")
         as_of_iso = isoformat_utc(parse_utc(as_of) if as_of else self.now())
-        mid, mid_at = self.yes_market_mid(market_id, as_of=as_of_iso)
+        quote = self.yes_market_quote(market_id, as_of=as_of_iso)
         hints: dict[str, Any] = {}
-        if mid is not None:
-            hints["market_mid"] = str(mid)
-            hints["market_mid_available_at"] = mid_at
+        if quote.mid is not None and quote.available_at is not None:
+            hints["market_mid"] = str(quote.mid)
+            hints["market_mid_available_at"] = quote.available_at
+        else:
+            hints["market_mid_unavailable_reason"] = quote.reason
         review = self.store.get_rules_review(market_id)
         if review is not None and review["rules_hash"] == market.rules_hash:
             rounding_hint = review_rounding_hint(dict(review))
@@ -918,6 +935,7 @@ class Lab:
             specialist=self.weather_specialist,
             expires_hours=expires_hours,
         )
+        decision = _attach_book_comparison(decision, request)
         request_payload = research_request_to_dict(request)
         input_hash = sha256_hex(
             json.dumps(request_payload, sort_keys=True, separators=(",", ":"))
@@ -937,6 +955,7 @@ class Lab:
                     "reason": decision.get("reason"),
                     "forecast_id": (decision.get("forecast") or {}).get("forecast_id"),
                     "variants": decision.get("variants"),
+                    "comparison": decision.get("comparison"),
                 },
                 "request": request_payload,
                 "input_hash": input_hash,
@@ -1620,6 +1639,54 @@ class Lab:
                 ]
             )
         return buf.getvalue()
+
+
+def _attach_book_comparison(
+    decision: dict[str, Any], request: ResearchRequest
+) -> dict[str, Any]:
+    """Fill market_mid from the request, which came from the stored book."""
+
+    hints = request.specialist_hints or {}
+    mid_raw = hints.get("market_mid")
+    mid_s = None
+    if mid_raw not in (None, ""):
+        try:
+            mid_s = str(quantize_prob(D(mid_raw)))
+        except (ValueError, ArithmeticError):
+            mid_s = None
+    available = hints.get("market_mid_available_at")
+    reason = hints.get("market_mid_unavailable_reason")
+    variants = decision.get("variants")
+    model_p = None
+    if isinstance(variants, Mapping):
+        calibrated = variants.get("calibrated_model")
+        if isinstance(calibrated, Mapping) and calibrated.get("p_yes") not in (None, ""):
+            model_p = str(calibrated["p_yes"])
+    if model_p is None:
+        forecast = decision.get("forecast")
+        if isinstance(forecast, Mapping) and forecast.get("p_yes") is not None:
+            model_p = str(forecast["p_yes"])
+    comparison = comparison_block(
+        model_p_yes=model_p,
+        market_mid=mid_s,
+        market_mid_available_at=None if available in (None, "") else str(available),
+        unavailable_reason=None if reason in (None, "") else str(reason),
+    )
+    decision["comparison"] = comparison
+    if isinstance(variants, dict):
+        mid_row = dict(variants.get("market_mid") or {})
+        mid_row["p_yes"] = comparison["market_mid"]
+        mid_row["available_at"] = comparison["market_mid_available_at"]
+        mid_row["unavailable_reason"] = comparison["unavailable_reason"]
+        mid_row["note"] = (
+            "Contemporaneous YES mid from the latest stored book with captured_at <= as_of. "
+            "Missing stays unavailable, not 0."
+        )
+        variants = dict(variants)
+        variants["market_mid"] = mid_row
+        decision["variants"] = variants
+    decision["edge_proven"] = False
+    return decision
 
 
 def _token_ids(raw: Mapping[str, Any]) -> tuple[str | None, str | None]:

@@ -13,6 +13,12 @@ from typing import Any, Literal, Mapping, Protocol
 
 from research_lab.money import D
 from research_lab.research_budget import ResearchBudget, weather_specialist_enabled
+from research_lab.same_day import SameDayState, assess_same_day, predictive_probability
+from research_lab.sigma_calibration import (
+    IDENTITY_CALIBRATION_ID as WEATHER_CALIBRATION_VERSION,
+    identity_stub_record,
+    model_version_for,
+)
 from research_lab.timeutil import isoformat_utc, parse_utc
 from research_lab.weather_contract import (
     ContractParse,
@@ -35,8 +41,7 @@ from research_lab.weather_source import (
     unofficial_series_max_c,
 )
 
-WEATHER_MODEL_VERSION = "weather-station-baseline-v1-calibration-identity-stub-v0"
-WEATHER_CALIBRATION_VERSION = "identity-stub-v0"
+WEATHER_MODEL_VERSION = model_version_for(WEATHER_CALIBRATION_VERSION)
 CONSERVATIVE_DEDUCTION = D("0.05")
 
 
@@ -98,9 +103,16 @@ class SpecialistModel(Protocol):
 
 
 class IdentityCalibrator:
-    """External-calibration hook. Currently identity; vintage is still logged."""
+    """External-calibration hook. Currently identity; vintage is still logged.
+
+    The record documents the missing forecast-error pairs. It does not change
+    mu or sigma and it does not claim an edge.
+    """
 
     version = WEATHER_CALIBRATION_VERSION
+
+    def __init__(self) -> None:
+        self.record = identity_stub_record()
 
     def apply(
         self,
@@ -145,9 +157,8 @@ class WeatherStationBaseline:
     unavailable — they do not invent numbers.
     """
 
-    name = "weather-station-baseline-v1"
+    name = "weather-station-baseline-v2"
     calibration_version = WEATHER_CALIBRATION_VERSION
-    model_version = WEATHER_MODEL_VERSION
 
     def __init__(
         self,
@@ -160,9 +171,14 @@ class WeatherStationBaseline:
     ) -> None:
         self.source = source if source is not None else build_weather_source(budget)
         self.calibrator = calibrator or IdentityCalibrator()
+        self.calibration_version = self.calibrator.version
         self.budget = budget
         self.boundary_hook = boundary_hook or IdentityBoundaryHook()
         self.conservative_deduction = conservative_deduction
+
+    @property
+    def model_version(self) -> str:
+        return model_version_for(self.calibrator.version)
 
     def estimate(self, request: ResearchRequest) -> SpecialistEstimate:
         if not weather_specialist_enabled():
@@ -276,6 +292,26 @@ class WeatherStationBaseline:
         else:
             unofficial_note = "official_field_present"
 
+        same_day = assess_same_day(
+            as_of=parse_utc(as_of),
+            local_date=contract.local_date,
+            timezone=contract.timezone,
+            observations=snap.observations,
+            observations_status=snap.observations_status,
+            observations_note=snap.observations_note,
+        )
+        if same_day.mode == "abstain":
+            return _abstain(
+                self,
+                request,
+                same_day.reason,
+                extra={
+                    **_snapshot_diag(snap, contract),
+                    "same_day": same_day.to_dict(),
+                    "note": same_day.note,
+                },
+            )
+
         lower_native, upper_native = contract.rounding.underlying_interval(
             contract.rounded_lower,
             contract.rounded_upper,
@@ -286,45 +322,65 @@ class WeatherStationBaseline:
         lower_u, upper_u = bounds_to_celsius(
             lower_native, upper_native, contract.unit
         )
-        raw_p = interval_prob(fc.predicted_max_c, snap.sigma_c, lower_u, upper_u)
-        mu_c, sigma_c = self.calibrator.apply(
+        raw = predictive_probability(
+            fc.predicted_max_c, snap.sigma_c, lower_u, upper_u, same_day
+        )
+        mu_cal, sigma_cal = self.calibrator.apply(
             fc.predicted_max_c,
             snap.sigma_c,
             station_id=contract.station_id,
             horizon_hours=fc.horizon_hours,
         )
-        cal_p = interval_prob(mu_c, sigma_c, lower_u, upper_u)
+        # Same-day truncation uses the calibrated location/scale. Identity
+        # calibration therefore still matches the raw track after conditioning.
+        calibrated = predictive_probability(
+            mu_cal, sigma_cal, lower_u, upper_u, same_day
+        )
+        cal_p = calibrated.p_yes
         p_low, p_high = conservative_band(
             cal_p, deduction=self.conservative_deduction
+        )
+        unconditional_p = interval_prob(
+            fc.predicted_max_c, snap.sigma_c, lower_u, upper_u
         )
 
         market_mid = _hint_prob(request.specialist_hints, "market_mid")
         market_mid_at = request.specialist_hints.get("market_mid_available_at")
+        unavailable_reason = request.specialist_hints.get("market_mid_unavailable_reason")
         if market_mid_at:
             try:
                 if parse_utc(str(market_mid_at)) > parse_utc(as_of):
                     market_mid = None
                     market_mid_at = "rejected_look_ahead"
+                    unavailable_reason = "rejected_look_ahead"
             except ValueError:
                 market_mid = None
                 market_mid_at = "invalid_timestamp"
+                unavailable_reason = "invalid_timestamp"
+        if market_mid is not None:
+            unavailable_reason = None
+        elif not unavailable_reason:
+            unavailable_reason = "not_provided"
 
+        calibration_note = _calibration_note(self)
+        if same_day.mode == "conditioned":
+            calibration_note += (
+                " Same-day truncation is separate from calibration and is not a fitted nowcast."
+            )
         variants = {
             "raw_model": {
-                "p_yes": str(raw_p),
-                "mu_c": str(fc.predicted_max_c),
-                "sigma_c": str(snap.sigma_c),
+                "p_yes": str(raw.p_yes),
+                "mu_c": str(raw.mu_c),
+                "sigma_c": str(raw.sigma_c),
                 "sigma_source": snap.sigma_source,
+                "unconditional_sigma_c": str(snap.sigma_c),
             },
             "calibrated_model": {
-                "p_yes": str(cal_p),
-                "mu_c": str(mu_c),
-                "sigma_c": str(sigma_c),
+                "p_yes": str(calibrated.p_yes),
+                "mu_c": str(calibrated.mu_c),
+                "sigma_c": str(calibrated.sigma_c),
                 "calibrator": self.calibrator.version,
-                "note": (
-                    "Identity stub until an external calibration vintage exists. "
-                    "Not a claim that the model is calibrated."
-                ),
+                "note": calibration_note,
             },
             "historical_base_rate": {
                 "p_yes": None if snap.climatology_p is None else str(snap.climatology_p),
@@ -334,11 +390,16 @@ class WeatherStationBaseline:
             "market_mid": {
                 "p_yes": None if market_mid is None else str(quantize_prob(market_mid)),
                 "available_at": market_mid_at,
-                "note": "Contemporaneous YES mid; missing stays unavailable, not 0.",
+                "unavailable_reason": unavailable_reason,
+                "note": (
+                    "Contemporaneous YES mid from a stored book with captured_at <= as_of. "
+                    "Missing stays unavailable, not 0."
+                ),
             },
         }
 
         sources = _sources_from_snapshot(snap, fc, as_of)
+        sources = _with_observation_vintage(sources, same_day, as_of)
         if not sources:
             return _abstain(self, request, "no_sources_available_at")
 
@@ -356,13 +417,57 @@ class WeatherStationBaseline:
             f"{contract.rounding.mode} rounding to {contract.rounding.increment} {contract.unit} "
             f"(underlying [{ulo_s}, {uhi_s})). "
             "Normal is a starting baseline: tails understate extremes and "
-            "regime shifts. Identity calibration stub. Not a profitability claim."
+            "regime shifts. "
+            + (
+                "Identity calibration stub: archived forecast/Temp-column pairs "
+                "are missing. "
+                if self.calibrator.version == WEATHER_CALIBRATION_VERSION
+                else (
+                    f"Caller-supplied calibration {self.calibrator.version} "
+                    "is not a verified holdout. "
+                )
+            )
+            + "Not a profitability claim."
         )
+        if same_day.mode == "conditioned":
+            thesis += (
+                f" Same-day floor {same_day.floor_c} C available_at {same_day.available_at}; "
+                f"conditioned sigma {calibrated.sigma_c} C. Not an official daily max."
+            )
+        elif same_day.mode == "fallback_no_temperature_yet":
+            thesis += " Same-day fallback: no temperature yet, unconditional forecast, none invented."
         invalidation = (
             "New model vintage, official daily-max field missing at settlement, "
             "rules_hash change, non-NWS resolution source, look-ahead evidence "
-            "(available_at > as_of), or incomplete series used as official max."
+            "(available_at > as_of), incomplete series used as official max, "
+            "or a same-day floor taken from an observation after as_of."
         )
+        same_day_diag = same_day.to_dict()
+        same_day_diag.update(
+            {
+                "sigma_unconditional_c": str(snap.sigma_c),
+                "sigma_conditioned_c": str(calibrated.sigma_c),
+                "mu_unconditional_c": str(fc.predicted_max_c),
+                "mu_used_c": str(calibrated.mu_c),
+                "shifted_to_observed_max": calibrated.shifted_to_floor,
+                "unconditional_p_yes": str(unconditional_p),
+            }
+        )
+        limitations = [
+            "normal_tails_understate_extremes",
+            "regime_shifts_unmodeled",
+            "nws_forecast_max_is_not_the_official_daily_max",
+            "resolution_quantity_is_hourly_temp_column_whole_degree_f",
+            "gridpoint_forecast_high_is_not_that_hourly_temp_max",
+        ]
+        if self.calibrator.version == WEATHER_CALIBRATION_VERSION:
+            limitations.append("calibration_is_identity_stub")
+        else:
+            limitations.append("supplied_calibration_is_not_statistical_validation")
+        if same_day.mode == "conditioned":
+            limitations.append("same_day_diurnal_shrink_is_an_assumption_not_a_fit")
+        if same_day.mode == "fallback_no_temperature_yet":
+            limitations.append("same_day_unconditional_fallback_no_temperature_invented")
 
         return SpecialistEstimate(
             status="ESTIMATE",
@@ -375,12 +480,9 @@ class WeatherStationBaseline:
                 "model": self.name,
                 "model_version": self.model_version,
                 "calibration_version": self.calibrator.version,
-                "limitations": [
-                    "normal_tails_understate_extremes",
-                    "regime_shifts_unmodeled",
-                    "calibration_is_identity_stub",
-                    "nws_forecast_max_is_not_the_official_daily_max",
-                ],
+                "calibration": _calibration_diag(self),
+                "same_day": same_day_diag,
+                "limitations": limitations,
                 "contract": {
                     "station_id": contract.station_id,
                     "local_date": contract.local_date,
@@ -439,6 +541,50 @@ class WeatherStationBaseline:
                 "edge_proven": False,
             },
         )
+
+
+def _calibration_diag(model: WeatherStationBaseline) -> dict[str, Any]:
+    record = getattr(model.calibrator, "record", None)
+    if record is None:
+        payload = identity_stub_record().to_dict()
+    else:
+        payload = record.to_dict()
+    payload["edge_proven"] = False
+    return payload
+
+
+def _calibration_note(model: WeatherStationBaseline) -> str:
+    record = getattr(model.calibrator, "record", None)
+    if record is None or record.kind == "identity_stub":
+        return (
+            "Identity stub until an external calibration vintage exists. "
+            "Archived issued NWS forecasts paired with the hourly Temp-column "
+            "daily max are missing, so no forecast-error sigma is fitted. "
+            "Not a claim that the model is calibrated."
+        )
+    return str(record.note)
+
+
+def _with_observation_vintage(
+    sources: list[dict[str, str]],
+    same_day: SameDayState,
+    as_of: str,
+) -> list[dict[str, str]]:
+    """Keep the floor observation's vintage on the forecast sources."""
+
+    if not same_day.url or not same_day.available_at:
+        return sources
+    try:
+        available = parse_utc(same_day.available_at)
+    except ValueError:
+        return sources
+    if available > parse_utc(as_of):
+        return sources
+    stamp = isoformat_utc(available)
+    row = {"url": same_day.url, "available_at": stamp}
+    if row in sources:
+        return sources
+    return [*sources, row]
 
 
 def _abstain(

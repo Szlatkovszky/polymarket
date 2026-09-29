@@ -11,7 +11,12 @@ Caveats encoded here (NWS services docs):
   daytime high, hourly fallback). That is a forecast proxy, not the official
   daily maximum.
 - Live error scale is NWS_DEFAULT_SIGMA_C (default 1.5 C): an uncalibrated
-  research assumption, not fitted station skill.
+  research assumption, not fitted station skill. Same-day truncation of that
+  scale lives in the specialist, not in this snapshot's ``sigma_c``.
+- Observations are a single GET of ``/stations/{id}/observations``. When the
+  local date has started, the query is bounded by local midnight and ``as_of``
+  so the page is that day's readings. A 404 leaves ``observations_status``
+  ``unavailable``; the specialist must not invent a max-so-far.
 - Stations outside the NWS domain (HTTP 404, e.g. RJTT) are missing_station.
 - The live API returns the current document only. If generatedAt/updateTime
   is after research as_of, there is no usable vintage (no look-ahead).
@@ -27,11 +32,11 @@ import json
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any, Mapping
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlencode, urljoin, urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
@@ -147,6 +152,8 @@ class WeatherSnapshot:
     climatology_note: str | None
     provider: str
     archive_urls: tuple[str, ...]
+    observations_status: str = "available"
+    observations_note: str | None = None
 
 
 class FixtureNWS:
@@ -223,6 +230,8 @@ class FixtureNWS:
             climatology_note=clim_note,
             provider=self.source_name,
             archive_urls=tuple(urls),
+            observations_status="available",
+            observations_note="fixture_archive",
         )
 
 
@@ -267,8 +276,14 @@ class NetworkNWS:
         del event_id, month_key
         as_of_dt = parse_utc(as_of)
         station_url = urljoin(self.base_url + "/", f"stations/{station_id}")
-        obs_url = urljoin(self.base_url + "/", f"stations/{station_id}/observations")
         station_payload = self._get_station(station_url, station_id=station_id)
+        timezone = _station_timezone(station_payload)
+        obs_url = self._observations_url(
+            station_id,
+            timezone=timezone,
+            local_date=local_date,
+            as_of_dt=as_of_dt,
+        )
         obs_payload = self._get_optional(obs_url)
         if not isinstance(station_payload, dict):
             raise WeatherSourceError("unexpected NWS station payload")
@@ -309,7 +324,37 @@ class NetworkNWS:
             ),
             provider=self.source_name,
             archive_urls=tuple(archive),
+            observations_status=_observations_status(obs_payload),
+            observations_note=_observations_note(obs_payload),
         )
+
+    def _observations_url(
+        self,
+        station_id: str,
+        *,
+        timezone: str,
+        local_date: str,
+        as_of_dt: datetime,
+    ) -> str:
+        """One GET. Bound to the local date once that date has started.
+
+        A future local date keeps the unfiltered collection URL. Those readings
+        belong to other days; the specialist filters by local date and must not
+        treat them as the event day's max.
+        """
+
+        base = urljoin(self.base_url + "/", f"stations/{station_id}/observations")
+        window = _local_day_start_utc(local_date, timezone)
+        if window is None or window > as_of_dt:
+            return base
+        query = urlencode(
+            {
+                "start": isoformat_utc(window),
+                "end": isoformat_utc(as_of_dt),
+                "limit": "500",
+            }
+        )
+        return f"{base}?{query}"
 
     def _get_station(self, url: str, *, station_id: str) -> dict[str, Any]:
         try:
@@ -640,6 +685,41 @@ def _climatology(
 
 def _is_http_404(exc: BaseException) -> bool:
     return "-> 404" in str(exc)
+
+
+def _station_timezone(payload: Mapping[str, Any] | None) -> str:
+    if not isinstance(payload, Mapping):
+        return ""
+    props = payload.get("properties")
+    if not isinstance(props, Mapping):
+        return ""
+    return str(props.get("timeZone") or "").strip()
+
+
+def _observations_status(payload: Any) -> str:
+    if isinstance(payload, dict):
+        return "available"
+    return "unavailable"
+
+
+def _observations_note(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return "observations_endpoint_unavailable"
+    features = payload.get("features") or []
+    if not features:
+        return "observations_collection_empty"
+    return "nws_observations_collection"
+
+
+def _local_day_start_utc(local_date: str, tz_name: str) -> datetime | None:
+    if not local_date or not tz_name:
+        return None
+    try:
+        zone = ZoneInfo(tz_name)
+        start_local = datetime.fromisoformat(f"{local_date}T00:00:00").replace(tzinfo=zone)
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+    return start_local.astimezone(timezone.utc)
 
 
 def _nws_coord(value: Any) -> str:

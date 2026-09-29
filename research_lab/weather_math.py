@@ -37,6 +37,30 @@ def normal_cdf(z: float) -> float:
     return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
 
 
+def interval_mass(
+    mu: Decimal,
+    sigma: Decimal,
+    lower: Decimal | None,
+    upper: Decimal | None,
+) -> float:
+    """Unquantized ``F(b) - F(a)`` under Normal(mu, sigma^2).
+
+    ``None`` is an open end. Caller must pass a positive sigma.
+    """
+
+    mu_f = float(D(mu))
+    sig_f = float(D(sigma))
+
+    def cdf_at(bound: Decimal | None, *, right: bool) -> float:
+        if bound is None:
+            return 1.0 if right else 0.0
+        z = (float(D(bound)) - mu_f) / sig_f
+        return normal_cdf(z)
+
+    p = cdf_at(upper, right=True) - cdf_at(lower, right=False)
+    return max(0.0, min(1.0, p))
+
+
 def interval_prob(
     mu: Decimal,
     sigma: Decimal,
@@ -51,17 +75,7 @@ def interval_prob(
 
     if sigma is None or sigma <= 0:
         raise ValueError("sigma must be positive; missing error scale is not 0")
-    mu_f = float(D(mu))
-    sig_f = float(D(sigma))
-
-    def cdf_at(bound: Decimal | None, *, right: bool) -> float:
-        if bound is None:
-            return 1.0 if right else 0.0
-        z = (float(D(bound)) - mu_f) / sig_f
-        return normal_cdf(z)
-
-    p = cdf_at(upper, right=True) - cdf_at(lower, right=False)
-    return quantize_prob(D(str(max(0.0, min(1.0, p)))))
+    return quantize_prob(D(str(interval_mass(mu, sigma, lower, upper))))
 
 
 class BoundaryHook(Protocol):

@@ -323,6 +323,15 @@ def _process_market(
         "forecast_id": (decision.get("forecast") or {}).get("forecast_id"),
         "paper": paper,
         "auto_settle": False,
+        "comparison": decision.get("comparison"),
+        "market_mid": (decision.get("comparison") or {}).get("market_mid")
+        if isinstance(decision.get("comparison"), dict)
+        else None,
+        "model_minus_market_mid": (decision.get("comparison") or {}).get(
+            "model_minus_market_mid"
+        )
+        if isinstance(decision.get("comparison"), dict)
+        else None,
     }
     lab.store.insert_paper_run(
         {

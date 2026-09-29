@@ -38,7 +38,12 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
 - **Weather station/date baseline** (`WeatherStationBaseline`): target is the
   contract resolution quantity (station + local date + rounding), not city weather.
   Interval probs `F(b)-F(a)` under a Normal error model with rounding/boundary
-  hooks. Always logs raw / identity-calibrated / historical base rate / market mid.
+  hooks. On an event date that is today in the station timezone, the distribution
+  is left-truncated at the observed max so far and sigma shrinks with the local
+  afternoon (an assumption, not a fit). A missing observation fetch ABSTAINs;
+  an empty successful fetch is an explicit unconditional fallback. The floor is
+  not an official daily max. Always logs raw / identity-calibrated / historical
+  base rate / market mid (latest stored book with `captured_at <= as_of`).
   ABSTAIN when station, rules, source, vintage, or forecast max is missing/ambiguous.
   Unspecified NOAA rounding ABSTAINs until rules-review supplies mode+increment;
   the specialist does not invent half-up from Temp-column language.
@@ -48,6 +53,10 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
   Live path maps gridpoint forecast (12-hour daytime high, hourly fallback) to
   `predicted_max` using station timezone + `generatedAt`/`updateTime` (no look-ahead).
   `NWS_DEFAULT_SIGMA_C` (default 1.5 C) is an uncalibrated assumption.
+  Same-day observations are one GET of `/stations/{id}/observations` inside the
+  existing network gate and research budget. Forecast-error calibration is still
+  the identity stub: archived issued forecasts paired with the hourly `Temp`
+  column (whole degrees F) are not on `api.weather.gov`, and no sigma is fabricated.
   Non-US ICAO that 404 (e.g. RJTT) → **ABSTAIN** `missing_station`.
   Contract naming a different provider (e.g. AccuWeather) → **ABSTAIN**, no NWS swap
 - Research cost + call ceilings (`RESEARCH_COST_CEILING_USD`,
@@ -103,8 +112,8 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
 | Public Gamma/CLOB GET | Fixture adapter + optional network GET + weather-like discovery | Real-schema soak / rate limits / production archive not done |
 | Market and book log | SQLite meta + snapshot + hash + append-only raw archive | Retention policy; live event-time corpus |
 | Rules review | CLI + HTTP (hash, cluster, cutoff, settlement source, PAPER model pin, optional rounding). Omitting rounding on NOAA city markets stays ABSTAIN | Exceptions, rule-change watcher |
-| Specialist model | Weather baseline + identity calibration stub + variant log | **Fitted** external calibration vintage; extremes/regime-shift model; econ-print family |
-| NWS / contract source | Timestamped fixture archive; optional live GET of observations **and** gridpoint forecast (current document only; `NWS_DEFAULT_SIGMA_C` uncalibrated) | Recorded live vintages / historical as_of replay; official daily-max settlement watcher; fitted error scale |
+| Specialist model | Weather baseline + same-day floor (assumption) + identity calibration stub + variant log + book mid | **Fitted** external calibration vintage; extremes/regime-shift model; econ-print family |
+| NWS / contract source | Timestamped fixture archive; optional live GET of observations **and** gridpoint forecast (current document only; `NWS_DEFAULT_SIGMA_C` uncalibrated; same-day obs query when the local date has started) | Archived issued forecasts paired with the hourly Temp-column daily max; official daily-max settlement watcher; fitted error scale |
 | Grok API | Stub + ceiling + critique interface (not wired) | Configurable model, strict JSON, spend enforcement |
 | Grok → paper signal | JSON import + POST; specialist is the numeric path | Trusted source archive |
 | Fair-value paper executor | Simulated FOK + `risk-v2` microstructure gates + dry paper-run | Latency stress vs fill model |
@@ -117,9 +126,15 @@ Locked strategy and `risk-v2` numbers: [`01_KUTATAS_ES_STRATEGIA.md`](01_KUTATAS
 ## What this slice does **not** prove
 
 - Normal errors fail at extremes and regime shifts; that is documented, not fixed
-- Identity calibration is a stub (raw == calibrated) until an external vintage exists
+- Identity calibration is a stub (the calibrator does not change mu or sigma)
+  until pairs of issued forecasts and the hourly Temp-column daily max exist.
+  Same-day truncation is applied on top of that and is not itself calibration.
+  A day-to-day climatological helper is computed only when the caller supplies
+  a series, is labeled in-sample, and is not applied to probabilities
+- Same-day truncation and the 08:00–18:00 shrink are assumptions, not a nowcast
+  and not an edge
 - NWS forecast-period temperature is a **proxy** for predicted daily max, not the
-  contractual official daily maximum
+  contractual official daily maximum (hourly `Temp` column, whole degrees F)
 - Fixture climatology `p=0.42` is a prior table, not a climate claim
 - Discovery heuristics are a collection filter, not a contract parser substitute
 - No locked forward sample, no live vintages, **no proven edge**
